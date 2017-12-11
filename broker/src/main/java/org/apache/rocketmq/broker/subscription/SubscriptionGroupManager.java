@@ -20,6 +20,7 @@ import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.BrokerPathConfigHelper;
 import org.apache.rocketmq.common.ConfigManager;
@@ -35,7 +36,7 @@ public class SubscriptionGroupManager extends ConfigManager {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
 
     private final ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable =
-        new ConcurrentHashMap<String, SubscriptionGroupConfig>(1024);
+            new ConcurrentHashMap<String, SubscriptionGroupConfig>(1024);
     private final DataVersion dataVersion = new DataVersion();
     private transient BrokerController brokerController;
 
@@ -117,6 +118,20 @@ public class SubscriptionGroupManager extends ConfigManager {
         }
     }
 
+    /**
+     * 根据GroupName查找订阅组信息
+     * <p>
+     * <p>
+     * 调用SubscriptionGroupManager.findSubscriptionGroupConfig(String GroupNmae)方法获取订阅信息。大致步骤如下：
+     * 1、以GroupNmae从SubscriptionGroupManager.SubscriptionGroupTable变量中获取订阅信息SubscriptionGroupConfig对象；若不为空则直接返回该对象；
+     * 2、若为空，表示还没有该订阅信息，再检查Broker是否运行自动创建订阅组（由配置参数autoCreateSubscriptionGroup设置，默认为true）。
+     * 若不允许则直接返回null；若允许则首先以GroupName为参数创建SubscriptionGroupConfig对象，并存入SubscriptionGroupTable变量中；
+     * 然后更新SubscriptionGroupManager的dataversion值；再将SubscriptionGroupManager的内容持久化到subscriptionGroup.json文件中；
+     * 最后返回该新创建的SubscriptionGroupConfig对象；
+     *
+     * @param group
+     * @return
+     */
     public SubscriptionGroupConfig findSubscriptionGroupConfig(final String group) {
         SubscriptionGroupConfig subscriptionGroupConfig = this.subscriptionGroupTable.get(group);
         if (null == subscriptionGroupConfig) {
@@ -143,7 +158,7 @@ public class SubscriptionGroupManager extends ConfigManager {
     @Override
     public String configFilePath() {
         return BrokerPathConfigHelper.getSubscriptionGroupPath(this.brokerController.getMessageStoreConfig()
-            .getStorePathRootDir());
+                .getStorePathRootDir());
     }
 
     @Override

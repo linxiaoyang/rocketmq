@@ -23,8 +23,8 @@ import org.slf4j.Logger;
 
 public class RebalanceService extends ServiceThread {
     private static long waitInterval =
-        Long.parseLong(System.getProperty(
-            "rocketmq.client.rebalance.waitInterval", "20000"));
+            Long.parseLong(System.getProperty(
+                    "rocketmq.client.rebalance.waitInterval", "20000"));
     private final Logger log = ClientLogger.getLog();
     private final MQClientInstance mqClientFactory;
 
@@ -32,6 +32,11 @@ public class RebalanceService extends ServiceThread {
         this.mqClientFactory = mqClientFactory;
     }
 
+
+    /**
+     * 该RebalanceService服务线程的run方法中，每隔10秒钟就执行一次MQClientInstance.doRebalance()方法，在该方法中遍历MQClientInstance.consumerTable:ConcurrentHashMap<String/* group , MQConsumerInner>变量，对每个MQConsumerInner对象，若是DefaultMQPushConsumerImpl（即PUSH模式）则执行RebalancePushImpl.doRebalance()方法，
+     * 若是DefaultMQPullConsumerImpl（即PULL模式）则执行RebalancePullImpl.doRebalance()方法。
+     */
     @Override
     public void run() {
         log.info(this.getServiceName() + " service started");

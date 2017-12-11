@@ -24,6 +24,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.concurrent.CopyOnWriteArrayList;
+
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.slf4j.Logger;
@@ -49,7 +50,7 @@ public class MappedFileQueue {
     private volatile long storeTimestamp = 0;
 
     public MappedFileQueue(final String storePath, int mappedFileSize,
-        AllocateMappedFileService allocateMappedFileService) {
+                           AllocateMappedFileService allocateMappedFileService) {
         this.storePath = storePath;
         this.mappedFileSize = mappedFileSize;
         this.allocateMappedFileService = allocateMappedFileService;
@@ -66,7 +67,7 @@ public class MappedFileQueue {
                 if (pre != null) {
                     if (cur.getFileFromOffset() - pre.getFileFromOffset() != this.mappedFileSize) {
                         LOG_ERROR.error("[BUG]The mappedFile queue's data is damaged, the adjacent mappedFile's offset don't match. pre file {}, cur file {}",
-                            pre.getFileName(), cur.getFileName());
+                                pre.getFileName(), cur.getFileName());
                     }
                 }
                 pre = cur;
@@ -74,12 +75,23 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 获取在某时间点之后更新的文件
+     *
+     * @param timestamp
+     * @return
+     */
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
         if (null == mfs)
             return null;
 
+        /**
+         * 遍历MapedFile列表，若遇到文件的更新时间戳大于某时间点timestamp
+         * 则返回该MapedFile对象，遍历完之后仍然没有找到则返回列表的最后一
+         * 个MapedFile对象
+         */
         for (int i = 0; i < mfs.length; i++) {
             MappedFile mappedFile = (MappedFile) mfs[i];
             if (mappedFile.getLastModifiedTimestamp() >= timestamp) {
@@ -101,9 +113,22 @@ public class MappedFileQueue {
         return mfs;
     }
 
+    /**
+     * 清理指定偏移量所在文件之后的文件
+     *
+     * @param offset
+     */
     public void truncateDirtyFiles(long offset) {
         List<MappedFile> willRemoveFiles = new ArrayList<MappedFile>();
 
+        /**
+         * 遍历MapedFile列表，每个MapedFile对象对应着一个固定大小的文件，
+         * 若当文件的起始偏移量fileFromOffset<=offset<=fileFromOffset+fileSize，
+         * 则表示指定的位置偏移量offset落在的该文件上，则将对应的MapedFile对象的
+         * wrotepostion和commitPosition设置为offset%fileSize，若文件的起始偏移
+         * 量fileFromOffset>offset，即是命中的文件之后的文件，则将这些文件删除并且
+         * 从MappFileQueue的MapedFile列表中清除掉。
+         */
         for (MappedFile file : this.mappedFiles) {
             long fileTailOffset = file.getFileFromOffset() + this.mappedFileSize;
             if (fileTailOffset > offset) {
@@ -154,7 +179,7 @@ public class MappedFileQueue {
 
                 if (file.length() != this.mappedFileSize) {
                     log.warn(file + "\t" + file.length()
-                        + " length not matched message store config value, ignore it");
+                            + " length not matched message store config value, ignore it");
                     return true;
                 }
 
@@ -176,6 +201,16 @@ public class MappedFileQueue {
         return true;
     }
 
+    /**
+     * 统计内存的数据还有多少未持久化
+     * <p>
+     * <p>
+     * 调用getLastMapedFile方法获取Mapped队列中最后一个MapedFile对象，计算得出未刷盘的消息大小，
+     * 计算公式为：最后一个MapedFile对象fileFromOffset+写入位置wrotepostion-commitedWhere
+     * （上次刷盘的位置）
+     *
+     * @return
+     */
     public long howMuchFallBehind() {
         if (this.mappedFiles.isEmpty())
             return 0;
@@ -191,27 +226,64 @@ public class MappedFileQueue {
         return 0;
     }
 
+    /**
+     * 获取或创建最后一个文件
+     *
+     * @param startOffset
+     * @param needCreate
+     * @return
+     */
     public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
         long createOffset = -1;
+        /**
+         * 从MapedFile列表中获取最后一个MapedFile对象，若列表为空或者最后一个对象对应的文件已经写满，
+         * 则创建一个新的文件（即新的MapedFile对象）；
+         * 若存在最后一个文件（对应最后一个MapedFile对象）并且未写满，则直接返回最后一个MapedFile对象
+         */
         MappedFile mappedFileLast = getLastMappedFile();
 
+        /**
+         * 设置开始的偏移量
+         */
         if (mappedFileLast == null) {
             createOffset = startOffset - (startOffset % this.mappedFileSize);
         }
 
+        /**
+         * 若最后一个文件写满，则新文件的文件名等于最后一个文件的fileFromOffset+fileSize；
+         */
         if (mappedFileLast != null && mappedFileLast.isFull()) {
             createOffset = mappedFileLast.getFileFromOffset() + this.mappedFileSize;
         }
 
         if (createOffset != -1 && needCreate) {
+            /**
+             * 拼接下一个文件的路径
+             */
             String nextFilePath = this.storePath + File.separator + UtilAll.offset2FileName(createOffset);
+            /**
+             * 下一个下一个的文件的路径
+             */
             String nextNextFilePath = this.storePath + File.separator
-                + UtilAll.offset2FileName(createOffset + this.mappedFileSize);
+                    + UtilAll.offset2FileName(createOffset + this.mappedFileSize);
             MappedFile mappedFile = null;
 
+
+            /**
+             * 若在Broker启动初始化的时候会创建了后台服务线程（AllocateMapedFileService服务），
+             * 则调用AllocateMapedFileService.putRequestAndReturnMapedFile方法，在该方法
+             * 中用下一个文件的文件路径、下下一个文件的路径、文件大小为参数初始化AllocateRequest
+             * 对象，并放入该服务线程的requestQueue:PriorityBlockingQueue<AllocateRequest>
+             * 变量中，由该线程在后台监听requestQueue队列，若该队列中存在AllocateRequest对象，
+             * 则利用该对象的变量值创建MapedFile对象（即在磁盘中生成了对应的物理文件），并存入
+             * AllocateRequest对象的MapedFile变量中，并且在下一个新文件之后继续将下下一个新文件
+             * 也创建了。若是在当前线程中直接创建MappeFile对象，则只创建一个新的文件。最后将创建或
+             * 返回的MapedFile对象存入MapedFileQueue的MapedFile列表中，并返回该MapedFile对象
+             * 给调用者
+             */
             if (this.allocateMappedFileService != null) {
                 mappedFile = this.allocateMappedFileService.putRequestAndReturnMappedFile(nextFilePath,
-                    nextNextFilePath, this.mappedFileSize);
+                        nextNextFilePath, this.mappedFileSize);
             } else {
                 try {
                     mappedFile = new MappedFile(nextFilePath, this.mappedFileSize);
@@ -237,6 +309,13 @@ public class MappedFileQueue {
         return getLastMappedFile(startOffset, true);
     }
 
+    /**
+     * 从MapedFile列表中获取最后一个MapedFile对象，若列表为空或者最后一个对象对应的文件已经写满，
+     * 则创建一个新的文件（即新的MapedFile对象）；
+     * 若存在最后一个文件（对应最后一个MapedFile对象）并且未写满，则直接返回最后一个MapedFile对象。
+     *
+     * @return
+     */
     public MappedFile getLastMappedFile() {
         MappedFile mappedFileLast = null;
 
@@ -260,7 +339,7 @@ public class MappedFileQueue {
 
         if (mappedFileLast != null) {
             long lastOffset = mappedFileLast.getFileFromOffset() +
-                mappedFileLast.getWrotePosition();
+                    mappedFileLast.getWrotePosition();
             long diff = lastOffset - offset;
 
             final int maxDiff = this.mappedFileSize * 2;
@@ -285,6 +364,15 @@ public class MappedFileQueue {
         return true;
     }
 
+    /**
+     * 获取MapedFile队列中最小Offset值
+     * <p>
+     * <p>
+     * 先获取MapedFile队列中第一个MapedFile对象，再取该对象的fileFromOffset值（即文件的名字值），
+     * 该值即为最小offset值；若MapedFile列表为空，则直接返回-1；
+     *
+     * @return
+     */
     public long getMinOffset() {
 
         if (!this.mappedFiles.isEmpty()) {
@@ -299,6 +387,13 @@ public class MappedFileQueue {
         return -1;
     }
 
+    /**
+     * 获取MapedFile队列中最大Offset值
+     * <p>
+     * 获取Mapped队列中最后一个MapedFile对象，将最后一个MapedFile对象fileFromOffset加上写入位置wrotepostion值即为最大offset值。
+     *
+     * @return
+     */
     public long getMaxOffset() {
         MappedFile mappedFile = getLastMappedFile();
         if (mappedFile != null) {
@@ -323,6 +418,13 @@ public class MappedFileQueue {
         return getMaxOffset() - flushedWhere;
     }
 
+
+    /**
+     * 删除某类文件中的最后一个文件
+     * <p>
+     * 例如commit类型的文件下面有多个固定大小（1G）的文件，即对应在MapedFile列表中有多个MapedFile对象，若要删除最后一个文件，
+     * 首先从磁盘中删除物理文件，然后从列表中删除最后一个MapedFile对象。
+     */
     public void deleteLastMappedFile() {
         MappedFile lastMappedFile = getLastMappedFile();
         if (lastMappedFile != null) {
@@ -334,9 +436,9 @@ public class MappedFileQueue {
     }
 
     public int deleteExpiredFileByTime(final long expiredTime,
-        final int deleteFilesInterval,
-        final long intervalForcibly,
-        final boolean cleanImmediately) {
+                                       final int deleteFilesInterval,
+                                       final long intervalForcibly,
+                                       final boolean cleanImmediately) {
         Object[] mfs = this.copyMappedFiles(0);
 
         if (null == mfs)
@@ -395,7 +497,7 @@ public class MappedFileQueue {
                     destroy = maxOffsetInLogicQueue < offset;
                     if (destroy) {
                         log.info("physic min offset " + offset + ", logics in current mappedFile max offset "
-                            + maxOffsetInLogicQueue + ", delete it");
+                                + maxOffsetInLogicQueue + ", delete it");
                     }
                 } else if (!mappedFile.isAvailable()) { // Handle hanged file.
                     log.warn("Found a hanged consume queue file, attempting to delete it.");
@@ -436,6 +538,20 @@ public class MappedFileQueue {
         return result;
     }
 
+
+    /**
+     * MappedFile队列中的消息刷盘
+     * <p>
+     * <p>
+     * 首先根据commitWhere值（上次刷盘的位置）在队列中找到所处的文件对象MapedFile，
+     * 即调用findMapedFileByOffset方法；然后调用MapedFile对象的commit方法完成消
+     * 息刷盘操作；最后利用MapedFile对象的fileFromOffset值加上这次刷盘的消息大小得
+     * 到的总和更新commitWhere值，作为下次刷盘的开始位置，同时更新MapedFileQueue对
+     * 象的存储时间戳（storeTimestamp）
+     *
+     * @param commitLeastPages
+     * @return
+     */
     public boolean commit(final int commitLeastPages) {
         boolean result = true;
         MappedFile mappedFile = this.findMappedFileByOffset(this.committedWhere, false);
@@ -451,8 +567,15 @@ public class MappedFileQueue {
 
     /**
      * Finds a mapped file by offset.
+     * 根据指定的offset找到所在文件
+     * <p>
+     * 方法findMapedFileByOffset(final long offset, final boolean returnFirstOnNotFound)：
+     * 首先找到MapedFile队列中的第一个MapedFile对象，取该对象的fileFromOffset值；
+     * 然后指定的offset减去fileFromOffset值再除以fileSize得到文件在MapedFile队列中的序列号index，
+     * 最后根据index值从列表中获取MapedFile对象。若index值获取对象时出错误（index<0或者大于列表的总数），
+     * 则根据returnFirstOnNotFound参数决定是返回null或者第一个MapedFile对象。
      *
-     * @param offset Offset.
+     * @param offset                Offset.
      * @param returnFirstOnNotFound If the mapped file is not found, then return the first one.
      * @return Mapped file or null (when not found and returnFirstOnNotFound is <code>false</code>).
      */
@@ -463,12 +586,12 @@ public class MappedFileQueue {
                 int index = (int) ((offset / this.mappedFileSize) - (mappedFile.getFileFromOffset() / this.mappedFileSize));
                 if (index < 0 || index >= this.mappedFiles.size()) {
                     LOG_ERROR.warn("Offset for {} not matched. Request offset: {}, index: {}, " +
-                            "mappedFileSize: {}, mappedFiles count: {}",
-                        mappedFile,
-                        offset,
-                        index,
-                        this.mappedFileSize,
-                        this.mappedFiles.size());
+                                    "mappedFileSize: {}, mappedFiles count: {}",
+                            mappedFile,
+                            offset,
+                            index,
+                            this.mappedFileSize,
+                            this.mappedFiles.size());
                 }
 
                 try {

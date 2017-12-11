@@ -82,6 +82,12 @@ public class GetMessageResult {
         return messageBufferList;
     }
 
+    /**
+     * 首先，将SelectMapedBufferResult对象存入GetMessageResult.messageMapedList:List变量中，
+     * 然后，将SelectMapedBufferResult对象d的二进制块ByteBuffer存入GetMessageResult.messageBufferList:List
+     * 变量中；最后，累加GetMessageResult.bufferTotalSize的值；
+     * @param mapedBuffer
+     */
     public void addMessage(final SelectMappedBufferResult mapedBuffer) {
         this.messageMapedList.add(mapedBuffer);
         this.messageBufferList.add(mapedBuffer.getByteBuffer());

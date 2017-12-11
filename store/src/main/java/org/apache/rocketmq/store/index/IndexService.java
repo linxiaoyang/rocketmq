@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.message.MessageConst;
@@ -33,6 +34,11 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+
+/**
+ * IndexService是线程类服务，在启动Broker时启动该线程服务。
+ * 该类主要有两个功能，第一，是定时的创建消息的索引；第二是为应用层提供访问index索引文件的接口
+ */
 public class IndexService {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     /**
@@ -51,7 +57,7 @@ public class IndexService {
         this.hashSlotNum = store.getMessageStoreConfig().getMaxHashSlotNum();
         this.indexNum = store.getMessageStoreConfig().getMaxIndexNum();
         this.storePath =
-            StorePathConfigHelper.getStorePathIndex(store.getMessageStoreConfig().getStorePathRootDir());
+                StorePathConfigHelper.getStorePathIndex(store.getMessageStoreConfig().getStorePathRootDir());
     }
 
     public boolean load(final boolean lastExitOK) {
@@ -67,7 +73,7 @@ public class IndexService {
 
                     if (!lastExitOK) {
                         if (f.getEndTimestamp() > this.defaultMessageStore.getStoreCheckpoint()
-                            .getIndexMsgTimestamp()) {
+                                .getIndexMsgTimestamp()) {
                             f.destroy(0);
                             continue;
                         }
@@ -154,6 +160,24 @@ public class IndexService {
         }
     }
 
+    /**
+     * 查找topic和key的物理偏移量offset
+     * <p>
+     * 调用queryOffset(String topic,String key,int maxNum,long begin,long end) 方法。每个topic和key值最多获取的物理偏移量不得超过64个。该方法查找的物理偏移量列表被封装在QueryOffsetResult对象中。在该方法中，从IndexFile列表的最后一个对象开始往前遍历每个IndexFile对象。主要逻辑如下：
+     * <p>
+     * 1）调用InfexFile对象的isTimeMacted检查开始时间、结束时间是否有一部分落在该Index文件中IndexHeader的beginTimestamp和EndTimestamp之间，若是则调用IndexFile的selectPhyOffset方法获取物理偏移量列表；
+     * <p>
+     * 2）检查IndexFile的beginTimestamp是否小于入参begin，若是则不用在往前寻找了，直接返回；
+     * <p>
+     * 3）若已经找到的物理偏移量个数已经大于了64，则直接返回；
+     *
+     * @param topic
+     * @param key
+     * @param maxNum
+     * @param begin
+     * @param end
+     * @return
+     */
     public QueryOffsetResult queryOffset(String topic, String key, int maxNum, long begin, long end) {
         List<Long> phyOffsets = new ArrayList<Long>(maxNum);
 
@@ -198,7 +222,25 @@ public class IndexService {
         return topic + "#" + key;
     }
 
+    /**
+     * 创建消息的索引
+     * <p>
+     * <p>
+     * 在将消息写入commitlog中之后，在调用DefaultMessageStore.DispatchMessageService.putRequest(DispatchRequest dispatchRequest)方法，在该方法中将请求放入IndexService.requestQueue队列中，由IndexService线程每隔3秒检测该队列中的请求信息。若存在请求信息，则调用IndexService.buildIndex(Object[] req)方法。具体逻辑如下：
+     * <p>
+     * 1）调用retryGetAndCreateIndexFile方法获取Index文件的对象IndexFile。
+     * A）从IndexFile列表中获取最后一个IndexFile对象；若该对象对应的Index文件没有写满，即IndexHeader的indexCount不大于2000W；则直接返回该对象；
+     * B）若获得的该对象为空或者已经写满，则创建新的IndexFile对象，即新的Index文件，若是因为写满了而创建，则在创建新Index文件时将该写满的Index文件的endPhyOffset和endTimestamp值初始化给新Index文件中IndexHeader的beginPhyOffset和beginTimestamp。
+     * C）启一个线程，调用IndexFile对象的fush将上一个写满的Index文件持久化到磁盘物理文件中；然后更新StoreCheckpoint.IndexMsgTimestamp为该写满的Index文件中IndexHeader的endTimestamp；
+     * <p>
+     * 2）遍历requestQueue队列中的请求消息。将每个请求消息的commitlogOffset值与获取的IndexFile文件的endPhyOffset进行比较，若小于endPhyOffset值，则直接忽略该条请求信息；对于消息类型为Prepared和RollBack的也直接忽略掉。
+     * <p>
+     * 3）对于一个topic可以有多个key值，每个key值以空格分隔，遍历每个key值，将topic-key值作为putKey方法的入参key值，将该topic的物理偏移量存入Index文件中，若存入失败则再次获取IndexFile对象重复调用putKey方法。
+     *
+     * @param req
+     */
     public void buildIndex(DispatchRequest req) {
+        //调用retryGetAndCreateIndexFile方法获取Index文件的对象IndexFile。
         IndexFile indexFile = retryGetAndCreateIndexFile();
         if (indexFile != null) {
             long endPhyOffset = indexFile.getEndPhyOffset();
@@ -314,11 +356,11 @@ public class IndexService {
         if (indexFile == null) {
             try {
                 String fileName =
-                    this.storePath + File.separator
-                        + UtilAll.timeMillisToHumanString(System.currentTimeMillis());
+                        this.storePath + File.separator
+                                + UtilAll.timeMillisToHumanString(System.currentTimeMillis());
                 indexFile =
-                    new IndexFile(fileName, this.hashSlotNum, this.indexNum, lastUpdateEndPhyOffset,
-                        lastUpdateIndexTimestamp);
+                        new IndexFile(fileName, this.hashSlotNum, this.indexNum, lastUpdateEndPhyOffset,
+                                lastUpdateIndexTimestamp);
                 this.readWriteLock.writeLock().lock();
                 this.indexFileList.add(indexFile);
             } catch (Exception e) {

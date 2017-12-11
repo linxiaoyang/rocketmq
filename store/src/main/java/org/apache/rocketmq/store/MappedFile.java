@@ -48,20 +48,47 @@ public class MappedFile extends ReferenceResource {
     private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
 
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
+    /**
+     * 当前写到什么位置
+     */
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
-    //ADD BY ChenYang
+    /**
+     * 数据提交到什么位置
+     */
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
+    /**
+     * flush到什么位置
+     */
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
+    /**
+     * 映射的文件大小
+     */
     protected int fileSize;
+    /**
+     * 映射的fileChannel文件
+     */
     protected FileChannel fileChannel;
     /**
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
      */
     protected ByteBuffer writeBuffer = null;
     protected TransientStorePool transientStorePool = null;
+    /**
+     * 映射的文件名
+     */
     private String fileName;
+    /**
+     * 映射的起始便宜量，可以看做是commitlog 这个文件的文件名
+     * this.fileFromOffset = Long.parseLong(this.file.getName());
+     */
     private long fileFromOffset;
+    /**
+     * 映射的文件
+     */
     private File file;
+    /**
+     * 要操作的mappedByteBuffer对象
+     */
     private MappedByteBuffer mappedByteBuffer;
     private volatile long storeTimestamp = 0;
     private boolean firstCreateInQueue = false;
@@ -190,6 +217,20 @@ public class MappedFile extends ReferenceResource {
         return fileChannel;
     }
 
+
+    /**
+     * 向文件顺序写操作
+     *
+     * 供commitlog使用，传入消息内容，由CommitLog按照规定的格式构造二进制信息并顺序写
+     *
+     *
+     * 具体的顺序写操作在AppendMessageCallback回调类的doAppend(final long fileFromOffset, final ByteBuffer byteBuffer,final int maxBlank, final Object msg)
+     * 方法中实现。目前只有CommitLog的内部类DefaultAppendMessageCallback实现了该回调类的方法，
+     * 故该顺序写方法只有在写入commitlog文件是才调用
+     * @param msg
+     * @param cb
+     * @return
+     */
     public AppendMessageResult appendMessage(final MessageExtBrokerInner msg, final AppendMessageCallback cb) {
         return appendMessagesInner(msg, cb);
     }
@@ -198,12 +239,26 @@ public class MappedFile extends ReferenceResource {
         return appendMessagesInner(messageExtBatch, cb);
     }
 
+    /**
+     * 向文件顺序写操作
+     *
+     *
+     * @param messageExt
+     * @param cb
+     * @return
+     */
     public AppendMessageResult appendMessagesInner(final MessageExt messageExt, final AppendMessageCallback cb) {
         assert messageExt != null;
         assert cb != null;
 
+        /**
+         * 获得当前文件可以写入的位置
+         */
         int currentPos = this.wrotePosition.get();
 
+        /**
+         * 如果可以写入的位置小于文件的大小，那么说明可以继续写入
+         */
         if (currentPos < this.fileSize) {
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
             byteBuffer.position(currentPos);
@@ -219,6 +274,9 @@ public class MappedFile extends ReferenceResource {
             this.storeTimestamp = result.getStoreTimestamp();
             return result;
         }
+        /**
+         * 报未知错误
+         */
         log.error("MappedFile.appendMessage return null, wrotePosition: {} fileSize: {}", currentPos, this.fileSize);
         return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
     }
@@ -227,9 +285,23 @@ public class MappedFile extends ReferenceResource {
         return this.fileFromOffset;
     }
 
+    /**
+     * 调用者将消息按照规定的格式组装成二进制信息之后再传入
+     * @param data
+     * @return
+     */
     public boolean appendMessage(final byte[] data) {
+        /**
+         * 获取当前内存对象的写入位置（wrotePostion变量值）
+         */
         int currentPos = this.wrotePosition.get();
 
+        /**
+         * 若当前写入位置加上二进制消息的长度小于文件大小，即剩余的空间够写入该消息，
+         * 则由内存对象mappedByteBuffer创建一个指向同一块内存的ByteBuffer对象，
+         * 并将内存对象的写入指针指向写入位置；
+         * 然后将该二进制信息写入该内存对象，同时将wrotePostion值增加消息的大小；
+         */
         if ((currentPos + data.length) <= this.fileSize) {
             try {
                 this.fileChannel.position(currentPos);
@@ -296,12 +368,26 @@ public class MappedFile extends ReferenceResource {
         return this.getFlushedPosition();
     }
 
+    /**
+     * 主要功能是将内存中的消息写入磁盘文件中。方法是commit(final int flushLeastPages)
+     * @param commitLeastPages
+     * @return
+     */
     public int commit(final int commitLeastPages) {
         if (writeBuffer == null) {
             //no need to commit data to file channel, so just regard wrotePosition as committedPosition.
             return this.wrotePosition.get();
         }
+        /**
+         * 检查文件是否写满了，即写入位置（wrotePostion）是否等于文件大小（fileSize），若已经写满则进行刷盘操作
+         */
         if (this.isAbleToCommit(commitLeastPages)) {
+            /**
+             * MapedFile的父类是ReferenceResource，该父类的作用是记录该MapedFile中的内存对象被引用的次数；
+             * 该引用次数为正数表示资源可用即未被shutdown，当在刷盘之前将引用次数加1后为正数，则调用BtyeBuffer
+             * 的force方法进行刷盘，再将committedPosition置为wrotePostion值；
+             * 最后将引用次数减1；若引起次数为不为正数则将直接committedPosition置为wrotePostion值
+             */
             if (this.hold()) {
                 commit0(commitLeastPages);
                 this.release();
@@ -379,6 +465,13 @@ public class MappedFile extends ReferenceResource {
         return this.fileSize == this.wrotePosition.get();
     }
 
+
+    /**
+     * 随机读操作 读取指定位置开始的指定消息大小的消息内容
+     * @param pos
+     * @param size
+     * @return
+     */
     public SelectMappedBufferResult selectMappedBuffer(int pos, int size) {
         int readPosition = getReadPosition();
         if ((pos + size) <= readPosition) {
@@ -401,6 +494,15 @@ public class MappedFile extends ReferenceResource {
         return null;
     }
 
+    /**
+     * 随机读操作
+     *
+     * 读取指定位置开始的所有消息内容
+     *
+     *
+     * @param pos
+     * @return
+     */
     public SelectMappedBufferResult selectMappedBuffer(int pos) {
         int readPosition = getReadPosition();
         if (pos < readPosition && pos >= 0) {
@@ -417,6 +519,12 @@ public class MappedFile extends ReferenceResource {
         return null;
     }
 
+
+    /**
+     * 主要功能是在调用shutdown时清理掉内存中的二进制信息
+     * @param currentRef
+     * @return
+     */
     @Override
     public boolean cleanup(final long currentRef) {
         if (this.isAvailable()) {

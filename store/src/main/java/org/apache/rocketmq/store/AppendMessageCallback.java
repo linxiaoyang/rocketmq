@@ -29,6 +29,14 @@ public interface AppendMessageCallback {
      *
      * @return How many bytes to write
      */
+    /**
+     *
+     * @param fileFromOffset
+     * @param byteBuffer
+     * @param maxBlank
+     * @param msg
+     * @return
+     */
     AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer,
         final int maxBlank, final MessageExtBrokerInner msg);
 

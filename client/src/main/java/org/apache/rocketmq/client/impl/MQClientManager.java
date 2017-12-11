@@ -45,12 +45,16 @@ public class MQClientManager {
     }
 
     public MQClientInstance getAndCreateMQClientInstance(final ClientConfig clientConfig, RPCHook rpcHook) {
+        //机器IP+进程号的形式
         String clientId = clientConfig.buildMQClientId();
+        //先从缓存中获取
         MQClientInstance instance = this.factoryTable.get(clientId);
         if (null == instance) {
+            //不存在就创建，这个创建的过程很重要！！！
             instance =
                 new MQClientInstance(clientConfig.cloneClientConfig(),
                     this.factoryIndexGenerator.getAndIncrement(), clientId, rpcHook);
+            //放入缓存
             MQClientInstance prev = this.factoryTable.putIfAbsent(clientId, instance);
             if (prev != null) {
                 instance = prev;

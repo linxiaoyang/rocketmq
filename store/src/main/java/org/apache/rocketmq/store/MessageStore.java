@@ -54,6 +54,8 @@ public interface MessageStore {
     /**
      * Store a message into store.
      *
+     * 存储信息到store模块
+     *
      * @param msg Message instance to store
      * @return result of store operation.
      */

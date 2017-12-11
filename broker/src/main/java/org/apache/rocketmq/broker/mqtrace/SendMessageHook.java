@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.broker.mqtrace;
 
+/**
+ * 发送信息的钩子接口，类似于AOP
+ */
 public interface SendMessageHook {
     public String hookName();
 

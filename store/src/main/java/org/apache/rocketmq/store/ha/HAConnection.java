@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
+
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
@@ -78,6 +79,16 @@ public class HAConnection {
         return socketChannel;
     }
 
+
+    /**
+     * 该模块主要是读取备用Broker的心跳信息，该信息就是8个字节，值为备用Broker的
+     * 最大物理偏移量，在解析到该值之后，首先，将该值赋值给HAConnection.slaveAckOffset
+     * 变量；然后若HAConnection.slaveRequestOffset小于零(在第一次启动时赋值为-1)则赋
+     * 值给该变量；最后调用HAService.notifyTransferSome(long slaveAckOffset)方法，
+     * 在该方法中，若slaveAckOffset大于HAService.push2SlaveMaxOffset的值则更新push2SlaveMaxOffset的值，
+     * 并通知调用GroupTransferService.notifyTransferSome方法唤醒GroupTransferService服务线程
+     * 。在同步双写模式下面，前端调用者会通过此线程服务来监听同步进度情况。
+     */
     class ReadSocketService extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024;
         private final Selector selector;
@@ -190,6 +201,28 @@ public class HAConnection {
         }
     }
 
+
+    /**
+     * 该服务线程启动之后，就每隔5秒向备用Broker发送心跳信息，具体步骤如下：
+     * <p>
+     * 1）检查HAConnection.slaveRequestOffset是否等于-1，即刚启动的状态，还没有收到备用Broker端的最大偏移量值；则等待1秒钟之后再次监听slaveRequestOffset变量；若收到了备用Broker的最大偏移量，即不等于-1了。则执行如下步骤；
+     * <p>
+     * 2）检查WriteSocketService.nextTransferFromWhere是否等于-1，即刚启动的状态，若是则要计算从哪里开始读取数据进行同步，大致逻辑如下：
+     * <p>
+     * 2.1）若HAConnection.slaveRequestOffset不等于零，则将slaveRequestOffset赋值给nextTransferFromWhere变量，表示就以备用Broker传来的最大偏离量开始读取数据进行同步；
+     * <p>
+     * 2.2）若HAConnection.slaveRequestOffset等于零，表示备用Broker端还没有commitlog数据，则将最后一个文件同步到备用Broker，即nextTransferFromWhere=最大偏移量maxOffset-maxOffset%1G，得到的值为最后一个文件的开始偏移量；
+     * <p>
+     * 3）向备用Broker发送心跳消息，消息为12个字节，前8个字节为开始同步的偏移量offset，后4个字节填0；若发送成功则继续下面的逻辑，否则从第1步开始重新执行；
+     * <p>
+     * 4）以nextTransferFromWhere为开始读取偏移量从commitlog中读取数据，调用DefaultMessageStore对象的getCommitLogData方法；若没有获取到数据则该服务线程等待100毫秒之后重新从第1步开始执行；
+     * <p>
+     * 5）若获取到commitlog数据，再检查该数据的大小是否大于了32K，每次数据同步最多只能同步32K，若大于了32K，则只发送前32K数据；消息机构为：
+     * <p>
+     * 12个字节的消息头，其中，前8个字节为开始同步的偏移量offset，后4个字节为同步数据的大小；先发送消息头，发送完成之后再发送同步数据；
+     * <p>
+     * 6）一直重复执行1-5步，若出现异常跳出来循环后，则停止该服务，并且从HAService.connectionList变量中删除该客户端连接；然后关掉Socket链接，释放资源。
+     */
     class WriteSocketService extends ServiceThread {
         private final Selector selector;
         private final SocketChannel socketChannel;
@@ -225,9 +258,9 @@ public class HAConnection {
                         if (0 == HAConnection.this.slaveRequestOffset) {
                             long masterOffset = HAConnection.this.haService.getDefaultMessageStore().getCommitLog().getMaxOffset();
                             masterOffset =
-                                masterOffset
-                                    - (masterOffset % HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()
-                                    .getMapedFileSizeCommitLog());
+                                    masterOffset
+                                            - (masterOffset % HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()
+                                            .getMapedFileSizeCommitLog());
 
                             if (masterOffset < 0) {
                                 masterOffset = 0;
@@ -239,16 +272,16 @@ public class HAConnection {
                         }
 
                         log.info("master transfer data from " + this.nextTransferFromWhere + " to slave[" + HAConnection.this.clientAddr
-                            + "], and slave request " + HAConnection.this.slaveRequestOffset);
+                                + "], and slave request " + HAConnection.this.slaveRequestOffset);
                     }
 
                     if (this.lastWriteOver) {
 
                         long interval =
-                            HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now() - this.lastWriteTimestamp;
+                                HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now() - this.lastWriteTimestamp;
 
                         if (interval > HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()
-                            .getHaSendHeartbeatInterval()) {
+                                .getHaSendHeartbeatInterval()) {
 
                             // Build Header
                             this.byteBufferHeader.position(0);
@@ -268,7 +301,7 @@ public class HAConnection {
                     }
 
                     SelectMappedBufferResult selectResult =
-                        HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);
+                            HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);
                     if (selectResult != null) {
                         int size = selectResult.getSize();
                         if (size > HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize()) {

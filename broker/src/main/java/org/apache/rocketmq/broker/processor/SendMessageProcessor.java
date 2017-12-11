@@ -93,6 +93,50 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             this.brokerController.getMessageStore().isTransientStorePoolDeficient();
     }
 
+
+    /**
+     * 将Consumer消费失败的消息写入延迟消息队列中
+     *
+     *1、若SendMessageProcessor处理器设置了消费消息的钩子consumeMessageHookList:List< ConsumeMessageHook>，则调用该钩子类的consumeMessageAfter方法。该钩子是在注册监听器是设置的，但目前没有设置该钩子；
+
+     2、以请求消息中的GroupName值调用SubscriptionGroupManager.findSubscriptionGroupConfig(String GroupNmae)方法获得SubscriptionGroupConfig对象；若该对象为null，则赋值响应消息的code等于SUBSCRIPTION_GROUP_NOT_EXIST，并返回给客户端；
+
+     3、检查该Broker是否有写的权限，若没有写的权限则该Broker不能发送此消息；直接返回响应消息，消息代码为NO_PERMISSION；
+
+     4、若SubscriptionGroupConfig.retryQueueNums（重试队列）为0；则直接丢弃该消息，返回响应消息，消息代码为SUCCESS；
+
+     5、以请求消息中的GroupName值构建新的topic值，等于"%RETRY%+consumerGroup"；
+
+     6、调用TopicConfigManager.createTopicInSendMessageBackMethod (String topic, int clientDefaultTopicQueueNums, int perm, int topicSysFlag)方法获取新构建的topic值的TopicConfig对象；
+
+     7、若该对象为null，则直接返回SYSTEM_ERROR的响应消息，若该对象没有写入权限则直接返回NO_PEMISSION的响应消息；
+
+     8、获取消息失败的消息内容。以请求消息中的offset（在消费某消息失败之后，该消息的commitlogoffset值）调用MessageStore.lookMessageByOffset (long commitLogOffset)方法，先从CommitLog文件中获取该commitLogOffset偏移量的4个字节（即为此消息的内容大小），然后调用DefaultMessageStore.lookMessageByOffset(long commitLogOffset, int size)方法获取从指定开始位置读取size大小的消息内容（MessageExt对象）；
+
+     9、若该消息内容为null，则直接返回SYSTEM_ERROR的响应消息；
+
+     10、从该消息的properties属性中获取"RETRY_TOPIC"属性值，若为null，则将此消息的topic值存入properties字段的"RETRY_TOPIC"属性中；
+
+     11、若该消息的消费次数（MessageExt.reconsumeTimes）大于最大重试次数（SubscriptionGroupConfig.retryMaxTimes） 或者请求消息中的delayLevel值小于0，则创建topic值为"%DLQ%+consumerGroup"作为新的topic值；然后调用TopicConfigManager.createTopicInSendMessageBackMethod(String topic, int clientDefaultTopicQueueNums, int perm, int topicSysFlag)方法获取新构建的topic值的TopicConfig对象；若该对象为null则直接返回SYSTEM_ERROR的响应消息，否则以该新的topic值和TopicConfig对象继续执行下面的逻辑；
+
+     12、若该消息的消费次数未超过最大重试次数并且请求消息中的delayLevel值大于等于0，若delayLevel等于0，则更新delayLevel等于重试次数加3，然后该新的delayLevel值存入此消息的properties字段的"DELAY"属性中；
+
+     13、随机的获取queueId值；
+
+     14、从MessageExt消息的properties属性中获取"ORIGIN_MESSAGE_ID"属性值，若没有则以MessageExt消息的msgId来设置新Message信息的properties属性的ORIGIN_MESSAGE_ID属性值，若有该属性值则将该属性值存入新Message信息的properties属性的ORIGIN_MESSAGE_ID属性值。保证同一个消息有多次发送失败能获取到真正消息的msgId；
+
+     14、构建新的MessageExtBrokerInner对象，其中reconsumeTimes等于MessageExt.reconsumeTimes加1；
+
+     15、调用DefaultMessageStore.putMessage(MessageExtBrokerInner msg)方法将消息写入延迟消息队列中；
+
+     16、若消息写入成功则返回SCUEESS的响应消息；
+     *
+     *
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request)
         throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);

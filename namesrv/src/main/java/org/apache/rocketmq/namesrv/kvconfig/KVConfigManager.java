@@ -29,6 +29,16 @@ import org.apache.rocketmq.namesrv.NamesrvController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * kv 类型数据的管理中心
+ *  数据类型
+ *
+ *
+ */
+
+//HashMap<String/* Namespace */, HashMap<String/* Key */, String/* Value */>> configTable;
+
+
 public class KVConfigManager {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
 
@@ -42,6 +52,9 @@ public class KVConfigManager {
         this.namesrvController = namesrvController;
     }
 
+    /**
+     * 从磁盘中加载数据
+     */
     public void load() {
         String content = null;
         try {
@@ -59,6 +72,12 @@ public class KVConfigManager {
         }
     }
 
+    /**
+     * 存放数据，以namespace为key,value是个map，map中的key与value
+     * @param namespace
+     * @param key
+     * @param value
+     */
     public void putKVConfig(final String namespace, final String key, final String value) {
         try {
             this.lock.writeLock().lockInterruptibly();
@@ -88,6 +107,9 @@ public class KVConfigManager {
         this.persist();
     }
 
+    /**
+     * 持久化到磁盘
+     */
     public void persist() {
         try {
             this.lock.readLock().lockInterruptibly();

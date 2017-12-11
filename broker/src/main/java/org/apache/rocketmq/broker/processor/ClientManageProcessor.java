@@ -52,7 +52,7 @@ public class ClientManageProcessor implements NettyRequestProcessor {
 
     @Override
     public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request)
-        throws RemotingCommandException {
+            throws RemotingCommandException {
         switch (request.getCode()) {
             case RequestCode.HEART_BEAT:
                 return this.heartBeat(ctx, request);
@@ -71,20 +71,45 @@ public class ClientManageProcessor implements NettyRequestProcessor {
         return false;
     }
 
+
+    /**
+     * 处理与客户端的心跳消息
+     * <p>
+     * <p>
+     * 1、解码接受消息，生成HeartbeatData对象；
+     * <p>
+     * 2、根据链接的Channel、ClientID等信息初始化ClientChannelInfo对象；
+     * <p>
+     * 3、若HeartbeatData对象中的ConsumerData集合有数据，则进行Consumer注册，对于该集合中的每个ConsumerData对象遍历如下操作步骤；（在接受到Consumer端的心跳信息后处理下列逻辑）。
+     * <p>
+     * 3.1）以心跳消息中的GroupName值调用SubscriptionGroupManager.findSubscriptionGroupConfig(String GroupNmae)方法获得SubscriptionGroupConfig对象；详见1.8.3小节。
+     * <p>
+     * 3.2）创建以%RETRY%+GroupName为topic值的topic配置信息。首先以该topic值在TopicConfigManager.topicConfigTable中查找是否存在，若不存在则创建TopicConfig对象，并存入topicConfigTable中，同时将该topicConfigTable变量的值持久化到topics.json文件中；
+     * <p>
+     * 3.3）调用ConsumerManager.registerConsumer(String group, ClientChannelInfo clientChannelInfo, ConsumeType consumeType, MessageModel messageModel, ConsumeFromWhere consumeFromWhere, Set<SubscriptionData> subList)方法进行Consumer的注册，其中Set<SubscriptionData>集合是消息中的SubscriptionDataSet变量；
+     * <p>
+     * 4、若HeartbeatData对象中的ProducerData集合有数据，则对每个ProducerData对象遍历调用ProducerManager.registerProducer(String group,ClientChannelInfo clientChannelInfo)方法进行Producer注册；在接受到Producer的心跳信息后处理该逻辑。
+     * <p>
+     * 5、返回成功；
+     *
+     * @param ctx
+     * @param request
+     * @return
+     */
     public RemotingCommand heartBeat(ChannelHandlerContext ctx, RemotingCommand request) {
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
         HeartbeatData heartbeatData = HeartbeatData.decode(request.getBody(), HeartbeatData.class);
         ClientChannelInfo clientChannelInfo = new ClientChannelInfo(
-            ctx.channel(),
-            heartbeatData.getClientID(),
-            request.getLanguage(),
-            request.getVersion()
+                ctx.channel(),
+                heartbeatData.getClientID(),
+                request.getLanguage(),
+                request.getVersion()
         );
 
         for (ConsumerData data : heartbeatData.getConsumerDataSet()) {
             SubscriptionGroupConfig subscriptionGroupConfig =
-                this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(
-                    data.getGroupName());
+                    this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(
+                            data.getGroupName());
             boolean isNotifyConsumerIdsChangedEnable = true;
             if (null != subscriptionGroupConfig) {
                 isNotifyConsumerIdsChangedEnable = subscriptionGroupConfig.isNotifyConsumerIdsChangedEnable();
@@ -94,32 +119,32 @@ public class ClientManageProcessor implements NettyRequestProcessor {
                 }
                 String newTopic = MixAll.getRetryTopic(data.getGroupName());
                 this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(
-                    newTopic,
-                    subscriptionGroupConfig.getRetryQueueNums(),
-                    PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
+                        newTopic,
+                        subscriptionGroupConfig.getRetryQueueNums(),
+                        PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
             }
 
             boolean changed = this.brokerController.getConsumerManager().registerConsumer(
-                data.getGroupName(),
-                clientChannelInfo,
-                data.getConsumeType(),
-                data.getMessageModel(),
-                data.getConsumeFromWhere(),
-                data.getSubscriptionDataSet(),
-                isNotifyConsumerIdsChangedEnable
+                    data.getGroupName(),
+                    clientChannelInfo,
+                    data.getConsumeType(),
+                    data.getMessageModel(),
+                    data.getConsumeFromWhere(),
+                    data.getSubscriptionDataSet(),
+                    isNotifyConsumerIdsChangedEnable
             );
 
             if (changed) {
                 log.info("registerConsumer info changed {} {}",
-                    data.toString(),
-                    RemotingHelper.parseChannelRemoteAddr(ctx.channel())
+                        data.toString(),
+                        RemotingHelper.parseChannelRemoteAddr(ctx.channel())
                 );
             }
         }
 
         for (ProducerData data : heartbeatData.getProducerDataSet()) {
             this.brokerController.getProducerManager().registerProducer(data.getGroupName(),
-                clientChannelInfo);
+                    clientChannelInfo);
         }
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
@@ -127,18 +152,18 @@ public class ClientManageProcessor implements NettyRequestProcessor {
     }
 
     public RemotingCommand unregisterClient(ChannelHandlerContext ctx, RemotingCommand request)
-        throws RemotingCommandException {
+            throws RemotingCommandException {
         final RemotingCommand response =
-            RemotingCommand.createResponseCommand(UnregisterClientResponseHeader.class);
+                RemotingCommand.createResponseCommand(UnregisterClientResponseHeader.class);
         final UnregisterClientRequestHeader requestHeader =
-            (UnregisterClientRequestHeader) request
-                .decodeCommandCustomHeader(UnregisterClientRequestHeader.class);
+                (UnregisterClientRequestHeader) request
+                        .decodeCommandCustomHeader(UnregisterClientRequestHeader.class);
 
         ClientChannelInfo clientChannelInfo = new ClientChannelInfo(
-            ctx.channel(),
-            requestHeader.getClientID(),
-            request.getLanguage(),
-            request.getVersion());
+                ctx.channel(),
+                requestHeader.getClientID(),
+                request.getLanguage(),
+                request.getVersion());
         {
             final String group = requestHeader.getProducerGroup();
             if (group != null) {
@@ -150,7 +175,7 @@ public class ClientManageProcessor implements NettyRequestProcessor {
             final String group = requestHeader.getConsumerGroup();
             if (group != null) {
                 SubscriptionGroupConfig subscriptionGroupConfig =
-                    this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(group);
+                        this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(group);
                 boolean isNotifyConsumerIdsChangedEnable = true;
                 if (null != subscriptionGroupConfig) {
                     isNotifyConsumerIdsChangedEnable = subscriptionGroupConfig.isNotifyConsumerIdsChangedEnable();
@@ -165,11 +190,11 @@ public class ClientManageProcessor implements NettyRequestProcessor {
     }
 
     public RemotingCommand checkClientConfig(ChannelHandlerContext ctx, RemotingCommand request)
-        throws RemotingCommandException {
+            throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
         CheckClientRequestBody requestBody = CheckClientRequestBody.decode(request.getBody(),
-            CheckClientRequestBody.class);
+                CheckClientRequestBody.class);
 
         if (requestBody != null && requestBody.getSubscriptionData() != null) {
             SubscriptionData subscriptionData = requestBody.getSubscriptionData();
@@ -190,7 +215,7 @@ public class ClientManageProcessor implements NettyRequestProcessor {
                 FilterFactory.INSTANCE.get(subscriptionData.getExpressionType()).compile(subscriptionData.getSubString());
             } catch (Exception e) {
                 log.warn("Client {}@{} filter message, but failed to compile expression! sub={}, error={}",
-                    requestBody.getClientId(), requestBody.getGroup(), requestBody.getSubscriptionData(), e.getMessage());
+                        requestBody.getClientId(), requestBody.getGroup(), requestBody.getSubscriptionData(), e.getMessage());
                 response.setCode(ResponseCode.SUBSCRIPTION_PARSE_FAILED);
                 response.setRemark(e.getMessage());
                 return response;

@@ -254,38 +254,38 @@ public class MessageDecoder {
                 msgExt = new MessageExt();
             }
 
-            // 1 TOTALSIZE
+            // 1 TOTALSIZE 4个字节
             int storeSize = byteBuffer.getInt();
             msgExt.setStoreSize(storeSize);
 
-            // 2 MAGICCODE
+            // 2 MAGICCODE 4个字节
             byteBuffer.getInt();
 
-            // 3 BODYCRC
+            // 3 BODYCRC   4个字节
             int bodyCRC = byteBuffer.getInt();
             msgExt.setBodyCRC(bodyCRC);
 
-            // 4 QUEUEID
+            // 4 QUEUEID   4个字节
             int queueId = byteBuffer.getInt();
             msgExt.setQueueId(queueId);
 
-            // 5 FLAG
+            // 5 FLAG     4个字节
             int flag = byteBuffer.getInt();
             msgExt.setFlag(flag);
 
-            // 6 QUEUEOFFSET
+            // 6 QUEUEOFFSET  8个字节
             long queueOffset = byteBuffer.getLong();
             msgExt.setQueueOffset(queueOffset);
 
-            // 7 PHYSICALOFFSET
+            // 7 PHYSICALOFFSET  8个字节
             long physicOffset = byteBuffer.getLong();
             msgExt.setCommitLogOffset(physicOffset);
 
-            // 8 SYSFLAG
+            // 8 SYSFLAG   4个字节
             int sysFlag = byteBuffer.getInt();
             msgExt.setSysFlag(sysFlag);
 
-            // 9 BORNTIMESTAMP
+            // 9 BORNTIMESTAMP  8个字节
             long bornTimeStamp = byteBuffer.getLong();
             msgExt.setBornTimestamp(bornTimeStamp);
 
@@ -295,7 +295,7 @@ public class MessageDecoder {
             int port = byteBuffer.getInt();
             msgExt.setBornHost(new InetSocketAddress(InetAddress.getByAddress(bornHost), port));
 
-            // 11 STORETIMESTAMP
+            // 11 STORETIMESTAMP 8个字节
             long storeTimestamp = byteBuffer.getLong();
             msgExt.setStoreTimestamp(storeTimestamp);
 

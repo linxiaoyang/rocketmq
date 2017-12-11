@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.broker.mqtrace;
 
+/**
+ * 消费消息的钩子类，介入处理消息的生命周期中
+ */
 public interface ConsumeMessageHook {
     String hookName();
 

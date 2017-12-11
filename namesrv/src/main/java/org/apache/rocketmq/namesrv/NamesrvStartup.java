@@ -18,11 +18,13 @@ package org.apache.rocketmq.namesrv;
 
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.joran.JoranConfigurator;
+
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.Properties;
 import java.util.concurrent.Callable;
+
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
@@ -39,6 +41,21 @@ import org.apache.rocketmq.srvutil.ShutdownHookThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * nameserver的功能
+ * 接收 broker 的请求注册 broker 路由信息（包括 master 和 slave）
+ * 接收 client 的请求根据某个 topic 获取所有到 broker 的路由信息
+ * <p>
+ * <p>
+ * <p>
+ * 1、每个Broker启动的时候会向Namesrv发送注册请求，Namesrv接收Broker的请求注册路由信息，NameServer保存活跃的broker列表，包括Master和Slave；
+ * <p>
+ * 2、用来保存所有topic和该topic所有队列的列表；
+ * <p>
+ * 3、NameServer用来保存所有broker的Filter列表
+ * <p>
+ * 4、接收client（Producer和Consumer）的请求根据某个topic获取所有到broker的路由信息；
+ */
 public class NamesrvStartup {
     public static Properties properties = null;
     public static CommandLine commandLine = null;
@@ -96,7 +113,7 @@ public class NamesrvStartup {
             MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), namesrvConfig);
 
             if (null == namesrvConfig.getRocketmqHome()) {
-                System.out.printf("Please set the " + MixAll.ROCKETMQ_HOME_ENV + " variable in your environment to match the location of the RocketMQ installation%n");
+                System.out.printf("Please set the %s variable in your environment to match the location of the RocketMQ installation%n", MixAll.ROCKETMQ_HOME_ENV);
                 System.exit(-2);
             }
 

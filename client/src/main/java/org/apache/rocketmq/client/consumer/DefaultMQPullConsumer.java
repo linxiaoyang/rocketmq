@@ -18,6 +18,7 @@ package org.apache.rocketmq.client.consumer;
 
 import java.util.HashSet;
 import java.util.Set;
+
 import org.apache.rocketmq.client.ClientConfig;
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.rebalance.AllocateMessageQueueAveragely;
@@ -134,13 +135,13 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
 
     @Override
     public MessageExt viewMessage(String offsetMsgId) throws RemotingException, MQBrokerException,
-        InterruptedException, MQClientException {
+            InterruptedException, MQClientException {
         return this.defaultMQPullConsumerImpl.viewMessage(offsetMsgId);
     }
 
     @Override
     public QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end)
-        throws MQClientException, InterruptedException {
+            throws MQClientException, InterruptedException {
         return this.defaultMQPullConsumerImpl.queryMessage(topic, key, maxNum, begin, end);
     }
 
@@ -210,13 +211,13 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
 
     @Override
     public void sendMessageBack(MessageExt msg, int delayLevel)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, null);
     }
 
     @Override
     public void sendMessageBack(MessageExt msg, int delayLevel, String brokerName)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, brokerName);
     }
 
@@ -247,39 +248,39 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
 
     @Override
     public PullResult pull(MessageQueue mq, String subExpression, long offset, int maxNums)
-        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+            throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQPullConsumerImpl.pull(mq, subExpression, offset, maxNums);
     }
 
     @Override
     public PullResult pull(MessageQueue mq, String subExpression, long offset, int maxNums, long timeout)
-        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+            throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQPullConsumerImpl.pull(mq, subExpression, offset, maxNums, timeout);
     }
 
     @Override
     public void pull(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback)
-        throws MQClientException, RemotingException, InterruptedException {
+            throws MQClientException, RemotingException, InterruptedException {
         this.defaultMQPullConsumerImpl.pull(mq, subExpression, offset, maxNums, pullCallback);
     }
 
     @Override
     public void pull(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback,
-        long timeout)
-        throws MQClientException, RemotingException, InterruptedException {
+                     long timeout)
+            throws MQClientException, RemotingException, InterruptedException {
         this.defaultMQPullConsumerImpl.pull(mq, subExpression, offset, maxNums, pullCallback, timeout);
     }
 
     @Override
     public PullResult pullBlockIfNotFound(MessageQueue mq, String subExpression, long offset, int maxNums)
-        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+            throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQPullConsumerImpl.pullBlockIfNotFound(mq, subExpression, offset, maxNums);
     }
 
     @Override
     public void pullBlockIfNotFound(MessageQueue mq, String subExpression, long offset, int maxNums,
-        PullCallback pullCallback)
-        throws MQClientException, RemotingException, InterruptedException {
+                                    PullCallback pullCallback)
+            throws MQClientException, RemotingException, InterruptedException {
         this.defaultMQPullConsumerImpl.pullBlockIfNotFound(mq, subExpression, offset, maxNums, pullCallback);
     }
 
@@ -288,6 +289,37 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
         this.defaultMQPullConsumerImpl.updateConsumeOffset(mq, offset);
     }
 
+
+    /**
+     * 获取队列的消费进度
+     * <p>
+     * <p>
+     * 调用DefaultMQPullConsumer.fetchConsumeOffset(MessageQueue mq, boolean fromStore)方法获取MessageQueue队列的消费进度，其中fromStore为true表示从存储端（即Broker端）获取消费进度；若fromStore为false表示从本地内存获取消费进度；
+     * <p>
+     * 1、对于从存储端获取消费进度（即fromStore=true）的情况：
+     * <p>
+     * 1.1)对于LocalFileOffsetStore对象，从本地加载offsets.json文件，然后获取该MessageQueue对象的offset值；
+     * <p>
+     * 1.2)对于RemoteBrokerOffsetStore对象,获取逻辑如下：
+     * <p>
+     * A）以MessageQueue对象的brokername从MQClientInstance. brokerAddrTable中获取Broker的地址；若没有获取到则立即调用updateTopicRouteInfoFromNameServer方法然后再次获取；
+     * <p>
+     * B）构造QueryConsumerOffsetRequestHeader对象，其中包括topic、consumerGroup、queueId；然后调用MQClientAPIImpl.queryConsumerOffset (String addr, QueryConsumerOffsetRequestHeader requestHeader, long timeoutMillis)方法向Broker发送QUERY_CONSUMER_OFFSET请求码，获取消费进度Offset；
+     * <p>
+     * C）用上一步从Broker获取的offset更新本地内存的消费进度列表数据RemoteBrokerOffsetStore.offsetTable:ConcurrentHashMap<MessageQueue, AtomicLong>变量值；
+     * <p>
+     * D）返回该offset值；
+     * <p>
+     * <p>
+     * 2、对于从本地内存获取消费进度（即fromStore=false）的情况：
+     * <p>
+     * 对于LocalFileOffsetStore或者RemoteBrokerOffsetStore对象，均是以MessageQueue对象作为key值从各自对象的offsetTable变量中获取相应的消费进度。
+     *
+     * @param mq
+     * @param fromStore
+     * @return
+     * @throws MQClientException
+     */
     @Override
     public long fetchConsumeOffset(MessageQueue mq, boolean fromStore) throws MQClientException {
         return this.defaultMQPullConsumerImpl.fetchConsumeOffset(mq, fromStore);
@@ -300,7 +332,7 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
 
     @Override
     public MessageExt viewMessage(String topic,
-        String uniqKey) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+                                  String uniqKey) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         try {
             MessageDecoder.decodeMessageId(uniqKey);
             return this.viewMessage(uniqKey);
@@ -312,7 +344,7 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
 
     @Override
     public void sendMessageBack(MessageExt msg, int delayLevel, String brokerName, String consumerGroup)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, brokerName, consumerGroup);
     }
 

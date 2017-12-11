@@ -85,7 +85,7 @@ public class PullMessageService extends ServiceThread {
 
         while (!this.isStopped()) {
             try {
-                PullRequest pullRequest = this.pullRequestQueue.take();
+                 PullRequest pullRequest = this.pullRequestQueue.take();
                 if (pullRequest != null) {
                     this.pullMessage(pullRequest);
                 }

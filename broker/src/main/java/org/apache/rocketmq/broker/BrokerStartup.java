@@ -50,6 +50,8 @@ public class BrokerStartup {
     public static Logger log;
 
     public static void main(String[] args) {
+        System.setProperty(MixAll.ROCKETMQ_HOME_PROPERTY,"/Users/olifer/github/rocketmq/distribution");
+        System.setProperty(MixAll.NAMESRV_ADDR_PROPERTY,"localhost:9876");
         start(createBrokerController(args));
     }
 

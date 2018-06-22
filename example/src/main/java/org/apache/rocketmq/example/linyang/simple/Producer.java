@@ -32,7 +32,7 @@ public class Producer {
 
         for (int i = 0; i < 100; i++) {
             try {
-                Message msg = new Message("TopicTest1",
+                Message msg = new Message("TopicTest",
                         "TagA",
                         "Hello world".getBytes(RemotingHelper.DEFAULT_CHARSET));
                 SendResult sendResult = producer.send(msg);

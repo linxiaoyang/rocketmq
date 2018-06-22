@@ -61,6 +61,7 @@ public class NamesrvStartup {
     public static CommandLine commandLine = null;
 
     public static void main(String[] args) {
+        System.setProperty(MixAll.ROCKETMQ_HOME_PROPERTY,"/Users/olifer/github/rocketmq/distribution");
         main0(args);
     }
 

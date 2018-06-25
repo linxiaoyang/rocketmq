@@ -156,6 +156,8 @@ public class RouteInfoManager {
         try {
             try {
                 this.lock.writeLock().lockInterruptibly();
+
+                //TODO 第一步：填充clusterAddrTable，也就是集群名称和brokerName的映射
                 //根据集群名称找到broker名称列表
                 Set<String> brokerNames = this.clusterAddrTable.get(clusterName);
                 if (null == brokerNames) {
@@ -166,6 +168,8 @@ public class RouteInfoManager {
                 }
                 //持有这个引用，往里面添加数据
                 brokerNames.add(brokerName);
+
+                //TODO 第二步： 填充brokerAddrTable，是brokerName和brokerData的映射关系，如果brokerData不存在就创建一个，入参是集群名称，brokerName和 brokerId与broker address的Map
 
                 boolean registerFirst = false;
 
@@ -179,23 +183,29 @@ public class RouteInfoManager {
                     this.brokerAddrTable.put(brokerName, brokerData);
                 }
                 String oldAddr = brokerData.getBrokerAddrs().put(brokerId, brokerAddr);
+                //判断是否是第一次注册有两个点，满足其中之一即可：第一个就是this.brokerAddrTable.get(brokerName)的值为null，说明没有获取到brokerName对应的BrokerData，
+                //第二个就是brokerData中的BrokerAddrs这Map设置值(brokerId, brokerAddr)，如果返回值是null，说明原来没有这个brokerId的记录
                 registerFirst = registerFirst || (null == oldAddr);
 
                 if (null != topicConfigWrapper
                         && MixAll.MASTER_ID == brokerId) {
+                    //TODO 第三步： 判断nameserver中记录的BrokerTopicConfig的信息是否过时，判断条件就是从broker中传递过来的DataVersion对象
                     if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion())
                             || registerFirst) {
                         //topic与topic配置信息的Map集合
+                        //通过broker传递过来的topicConfigWrapper的值，从其中获取topic name与这个topic配置信息的一个Map===>tcTable
                         ConcurrentMap<String, TopicConfig> tcTable =
                                 topicConfigWrapper.getTopicConfigTable();
                         if (tcTable != null) {
                             for (Map.Entry<String, TopicConfig> entry : tcTable.entrySet()) {
+                                //TODO 第四步：根据brokerName和TopicConfig创建或者是更新QueueData
                                 this.createAndUpdateQueueData(brokerName, entry.getValue());
                             }
                         }
                     }
                 }
 
+                //创建一个BrokerLiveInfo，添加到brokerLiveTable中
                 BrokerLiveInfo prevBrokerLiveInfo = this.brokerLiveTable.put(brokerAddr,
                         new BrokerLiveInfo(
                                 System.currentTimeMillis(),
@@ -234,6 +244,12 @@ public class RouteInfoManager {
         return result;
     }
 
+    /**
+     * 通过brokerAddr的地址，获取BrokerLiveInfo对象，这个对象是包含broker存活信息的
+     * @param brokerAddr
+     * @param dataVersion
+     * @return
+     */
     private boolean isBrokerTopicConfigChanged(final String brokerAddr, final DataVersion dataVersion) {
         BrokerLiveInfo prev = this.brokerLiveTable.get(brokerAddr);
         if (null == prev || !prev.getDataVersion().equals(dataVersion)) {
@@ -256,6 +272,7 @@ public class RouteInfoManager {
         queueData.setPerm(topicConfig.getPerm());
         queueData.setTopicSynFlag(topicConfig.getTopicSysFlag());
 
+        //根据topic名字查询queueDataList
         List<QueueData> queueDataList = this.topicQueueTable.get(topicConfig.getTopicName());
         if (null == queueDataList) {
             //需要create

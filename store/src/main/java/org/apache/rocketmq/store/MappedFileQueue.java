@@ -234,6 +234,9 @@ public class MappedFileQueue {
      * @return
      */
     public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
+        /**
+         * 这个offeset是所有MappedFile的全局offset
+         */
         long createOffset = -1;
         /**
          * 从MapedFile列表中获取最后一个MapedFile对象，若列表为空或者最后一个对象对应的文件已经写满，
@@ -447,28 +450,26 @@ public class MappedFileQueue {
         int mfsLength = mfs.length - 1;
         int deleteCount = 0;
         List<MappedFile> files = new ArrayList<MappedFile>();
-        if (null != mfs) {
-            for (int i = 0; i < mfsLength; i++) {
-                MappedFile mappedFile = (MappedFile) mfs[i];
-                long liveMaxTimestamp = mappedFile.getLastModifiedTimestamp() + expiredTime;
-                if (System.currentTimeMillis() >= liveMaxTimestamp || cleanImmediately) {
-                    if (mappedFile.destroy(intervalForcibly)) {
-                        files.add(mappedFile);
-                        deleteCount++;
+        for (int i = 0; i < mfsLength; i++) {
+            MappedFile mappedFile = (MappedFile) mfs[i];
+            long liveMaxTimestamp = mappedFile.getLastModifiedTimestamp() + expiredTime;
+            if (System.currentTimeMillis() >= liveMaxTimestamp || cleanImmediately) {
+                if (mappedFile.destroy(intervalForcibly)) {
+                    files.add(mappedFile);
+                    deleteCount++;
 
-                        if (files.size() >= DELETE_FILES_BATCH_MAX) {
-                            break;
-                        }
-
-                        if (deleteFilesInterval > 0 && (i + 1) < mfsLength) {
-                            try {
-                                Thread.sleep(deleteFilesInterval);
-                            } catch (InterruptedException e) {
-                            }
-                        }
-                    } else {
+                    if (files.size() >= DELETE_FILES_BATCH_MAX) {
                         break;
                     }
+
+                    if (deleteFilesInterval > 0 && (i + 1) < mfsLength) {
+                        try {
+                            Thread.sleep(deleteFilesInterval);
+                        } catch (InterruptedException e) {
+                        }
+                    }
+                } else {
+                    break;
                 }
             }
         }

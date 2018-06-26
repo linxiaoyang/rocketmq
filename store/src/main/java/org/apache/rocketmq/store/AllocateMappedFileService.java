@@ -210,12 +210,10 @@ public class AllocateMappedFileService extends ServiceThread {
         } catch (IOException e) {
             log.warn(this.getServiceName() + " service has exception. ", e);
             this.hasException = true;
-            if (null != req) {
-                requestQueue.offer(req);
-                try {
-                    Thread.sleep(1);
-                } catch (InterruptedException ignored) {
-                }
+            requestQueue.offer(req);
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException ignored) {
             }
         } finally {
             if (req != null && isSuccess)

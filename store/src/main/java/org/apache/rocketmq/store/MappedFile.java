@@ -61,7 +61,7 @@ public class MappedFile extends ReferenceResource {
      */
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
     /**
-     * 映射的文件大小
+     * 映射的文件大小，定长
      */
     protected int fileSize;
     /**
@@ -74,11 +74,11 @@ public class MappedFile extends ReferenceResource {
     protected ByteBuffer writeBuffer = null;
     protected TransientStorePool transientStorePool = null;
     /**
-     * 映射的文件名
+     * 映射的文件名，就是该文件的起始偏移量
      */
     private String fileName;
     /**
-     * 映射的起始便宜量，可以看做是commitlog 这个文件的文件名
+     * 映射的起始偏移量，可以看做是commitlog 这个文件的文件名
      * this.fileFromOffset = Long.parseLong(this.file.getName());
      */
     private long fileFromOffset;

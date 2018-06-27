@@ -201,51 +201,85 @@ public class BrokerController {
      * <p>
      * 调用BrokerController对象的initialize方法进行初始化工作。大致逻辑如下：
      * <p>
-     * 1、加载topics.json、consumerOffset.json、subscriptionGroup.json文件，分别将各文件的数据存入TopicConfigManager、ConsumerOffsetManager、SubscriptionGroupManager对象中；在初始化BrokerController对象的过程中，初始化TopicConfigManager对象时，默认初始化了"SELF_TEST_TOPIC"、"TBW102"（自动创建Topic功能是否开启BrokerConfig.autoCreateTopicEnable=false，线上建议关闭）、"BenchmarkTest"、BrokerClusterName（集群名称）、BrokerName（Broker的名称）、"OFFSET_MOVED_EVENT"这5个topic的信息并存入了topicConfigTable变量中，在向NameServer注册时发给NameServer进行登记；
+     * 1、加载topics.json、consumerOffset.json、subscriptionGroup.json文件，
+     * 分别将各文件的数据存入TopicConfigManager、ConsumerOffsetManager、SubscriptionGroupManager对象中；
+     * 在初始化BrokerController对象的过程中，初始化TopicConfigManager对象时，
+     * 默认初始化了"SELF_TEST_TOPIC"、"TBW102"（自动创建Topic功能是否开启
+     * BrokerConfig.autoCreateTopicEnable=false，线上建议关闭）、
+     * "BenchmarkTest"、BrokerClusterName（集群名称）、BrokerName（Broker的名称）、
+     * "OFFSET_MOVED_EVENT"这5个topic的信息并存入了topicConfigTable变量中，
+     * 在向NameServer注册时发给NameServer进行登记；
      * <p>
      * 2、初始化DefaultMessageStore对象，该对象是应用层访问存储层的访问类；
      * <p>
-     * 2.1)AllocateMapedFileService服务线程，当需要创建MappedFile时（在MapedFileQueue.getLastMapedFile方法中），向该线程的requestQueue队列中放入AllocateRequest请求对象，该线程会在后台监听该队列，并在后台创建MapedFile对象，即同时创建了物理文件。
+     * 2.1)AllocateMapedFileService服务线程，当需要创建MappedFile时
+     * （在MapedFileQueue.getLastMapedFile方法中），向该线程的requestQueue队列中放入AllocateRequest请求对象，
+     * 该线程会在后台监听该队列，并在后台创建MapedFile对象，即同时创建了物理文件。
      * <p>
-     * 2.2）创建DispatchMessageService服务线程，该服务线程负责给commitlog数据创建ConsumeQueue数据和创建Index索引。
+     * 2.2）创建DispatchMessageService服务线程，该服务线程负责给commitlog数据创建ConsumeQueue数据和
+     * 创建Index索引。
      * <p>
      * 2.3）创建IndexService服务线程，该服务线程负责创建Index索引；
      * <p>
      * 2.4）还初始化了如下服务线程，在调用DispatchMessageService对象的start方法时启动这些线程：
      * <p>
      * 服务类名	作用
-     * FlushConsumeQueueService	逻辑队列刷盘服务，每隔1秒钟就将ConsumeQueue逻辑队列、TransactionStateService.TranRedoLog变量的数据持久化到磁盘物理文件中
+     * FlushConsumeQueueService	逻辑队列刷盘服务，每隔1秒钟就将ConsumeQueue逻辑队列、
+     * TransactionStateService.TranRedoLog变量的数据持久化到磁盘物理文件中
      * CleanCommitLogService	清理物理文件服务，定期清理72小时之前的物理文件。
-     * CleanConsumeQueueService	清理逻辑文件服务，定期清理在逻辑队列中的物理偏移量小于commitlog中的最小物理偏移量的数据，同时也清理Index中物理偏移量小于commitlog中的最小物理偏移量的数据。
+     * CleanConsumeQueueService	清理逻辑文件服务，定期清理在逻辑队列中的物理偏移量小于
+     * commitlog中的最小物理偏移量的数据，同时也清理Index中物理偏移量小于commitlog中的最小物理偏移量的数据。
      * StoreStatsService	存储层内部统计服务
      * HAService	用于commitlog数据的主备同步
      * ScheduleMessageService	用于监控延迟消息，并到期后执行
      * TransactionStateService	用于事务消息状态文件，在RocketMQ-3.1.9版本中可以查看源码
-     * 2.5）初始化CommitLog对象，在初始化该对象的过程中，第一，根据刷盘类型初始化FlushCommitLogService线程服务，若为同步刷盘（SYNC_FLUSH），则创建初始化为GroupCommitService线程服务；若为异步刷盘（ASYNC_FLUSH）则创建初始化FlushRealTimeService线程服务；第二，初始化DefaultAppendMessageCallback对象；
+     * 2.5）初始化CommitLog对象，在初始化该对象的过程中，第一，根据刷盘类型初始化
+     * FlushCommitLogService线程服务，若为同步刷盘（SYNC_FLUSH），则创建初始化为
+     * GroupCommitService线程服务；若为异步刷盘（ASYNC_FLUSH）则创建初始化FlushRealTimeService线程服务；
+     * 第二，初始化DefaultAppendMessageCallback对象；
      * <p>
      * 2.6）启动AllocateMapedFileService、DispatchMessageService、IndexService服务线程。
      * <p>
      * 3、调用DefaultMessageStore.load加载数据：
      * <p>
-     * 3.1)调用ScheduleMessageService.load方法，初始化延迟级别列表。将这些级别（"1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"）的延时存入延迟级别delayLevelTable：ConcurrentHashMap<Integer /* level , Long/* delay timeMillis >变量中，例如1s的kv值为1:1000,5s的kv值为2:5000，key值依次类推；每个延迟级别即为一个队列。
+     * 3.1)调用ScheduleMessageService.load方法，初始化延迟级别列表。
+     * 将这些级别（"1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"）
+     * 的延时存入延迟级别delayLevelTable：ConcurrentHashMap<Integer /* level , Long/* delay timeMillis >变量中，
+     * 例如1s的kv值为1:1000,5s的kv值为2:5000，key值依次类推；每个延迟级别即为一个队列。
      * <p>
-     * 3.2)调用CommitLog.load方法，在此方法中调用MapedFileQueue.load方法，将$HOME /store/commitlog目录下的所有文件加载到MapedFileQueue的List<MapedFile>变量中；
+     * 3.2)调用CommitLog.load方法，在此方法中调用MapedFileQueue.load方法，
+     * 将$HOME /store/commitlog目录下的所有文件加载到MapedFileQueue的List<MapedFile>变量中；
      * <p>
-     * 3.3)调用DefaultMessageStore.loadConsumeQueue方法加载consumequeue文件数据到DefaultMessageStore.consumeQueueTable集合中。
+     * 3.3)调用DefaultMessageStore.loadConsumeQueue方法加载consumequeue文件数据到
+     * DefaultMessageStore.consumeQueueTable集合中。
      * <p>
-     * 3.4）调用TransactionStateService.load()方法加载tranStateTable文件和tranRedoLog文件；
+     * 3.4）调用TransactionStateService.load()方法加载tranStateTable文件
+     * 和tranRedoLog文件；
      * <p>
-     * 3.5)初始化StoreCheckPoint对象，加载$HOME/store/checkpoint文件，该文件记录三个字段值，分别是物理队列消息时间戳、逻辑队列消息时间戳、索引队列消息时间戳。
+     * 3.5)初始化StoreCheckPoint对象，加载$HOME/store/checkpoint文件，
+     * 该文件记录三个字段值，分别是物理队列消息时间戳、逻辑队列消息时间戳、索引队列消息时间戳。
      * <p>
-     * 3.6)调用IndexService.load方法加载$HOME/store/index目录下的文件。对该目录下的每个文件初始化一个IndexFile对象。然后调用IndexFile对象的load方法将IndexHeader加载到对象的变量中；再根据检查是否存在abort文件，若有存在abort文件，则表示Broker表示上次是异常退出的，则检查checkpoint的indexMsgTimestamp字段值是否小于IndexHeader的endTimestamp值，indexMsgTimestamp值表示最后刷盘的时间，若小于则表示在最后刷盘之后在该文件中还创建了索引，则要删除该Index文件，否则将该IndexFile对象放入indexFileList:ArrayList<IndexFile>索引文件集合中。
+     * 3.6)调用IndexService.load方法加载$HOME/store/index目录下的文件。
+     * 对该目录下的每个文件初始化一个IndexFile对象。然后调用IndexFile对象的load方法
+     * 将IndexHeader加载到对象的变量中；再根据检查是否存在abort文件，若有存在abort文件，
+     * 则表示Broker表示上次是异常退出的，则检查checkpoint的indexMsgTimestamp字段值是
+     * 否小于IndexHeader的endTimestamp值，indexMsgTimestamp值表示最后刷盘的时间，
+     * 若小于则表示在最后刷盘之后在该文件中还创建了索引，则要删除该Index文件，否则将该
+     * IndexFile对象放入indexFileList:ArrayList<IndexFile>索引文件集合中。
      * <p>
      * 3.7)恢复内存数据。
      * <p>
-     * 1）恢复每个ConsumeQueue对象的maxPhysicOffset变量的值（最后一个消息的物理offset），遍历consumeQueueTable集合中的每个topic/queueId下面的ConsumeQueue对象，调用ConsumeQueue对象recover方法。
+     * 1）恢复每个ConsumeQueue对象的maxPhysicOffset变量的值（最后一个消息的物理offset），
+     * 遍历consumeQueueTable集合中的每个topic/queueId下面的ConsumeQueue对象，
+     * 调用ConsumeQueue对象recover方法。
      * <p>
-     * 2）根据是否有abort文件来确定选择何种方法恢复commitlog数据，若有该文件则调用CommitLog对象的recoverAbnormally方法进行恢复，否则调用CommitLog对象的recoverNormally方法进行恢复。主要是恢复MapedFileQueue对象的commitedWhere变量值（即刷盘的位置），删除该commitedWhere值所在文件之后的commitlog文件以及对应的MapedFile对象。
+     * 2）根据是否有abort文件来确定选择何种方法恢复commitlog数据，若有该文件则调
+     * 用CommitLog对象的recoverAbnormally方法进行恢复，否则调用CommitLog对象的
+     * recoverNormally方法进行恢复。主要是恢复MapedFileQueue对象的commitedWhere变量值
+     * （即刷盘的位置），删除该commitedWhere值所在文件之后的commitlog文件以及对应的MapedFile对象。
      * <p>
-     * 3）恢复CommitLog对象的topicQueueTable :HashMap<String/* topic-queueid , Long/* offset >变量值；遍历consumeQueueTable集合，逻辑如下：
+     * 3）恢复CommitLog对象的topicQueueTable :HashMap<String/* topic-queueid , Long/* offset >变量值；
+     * 遍历consumeQueueTable集合，逻辑如下：
      * <p>
      * A）对每个topic/queueId下面的ConsumeQueue对象，获取该对象的最大偏移量，等于MapedFileQueue.getMaxOffset/20；然后以topic-queueId为key值，该偏移量为values，存入topicQueueTable变量中；
      * <p>

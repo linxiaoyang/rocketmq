@@ -124,19 +124,45 @@ public class DefaultMessageStore implements MessageStore {
         this.brokerConfig = brokerConfig;
         this.messageStoreConfig = messageStoreConfig;
         this.brokerStatsManager = brokerStatsManager;
+
+        /**
+         * 当需要创建MappedFile时（在MapedFileQueue.getLastMapedFile方法中），向该线程的requestQueue队列中放入AllocateRequest请求对象，
+         * 该线程会在后台监听该队列，并在后台创建MapedFile对象，即同时创建了物理文件
+         */
         this.allocateMappedFileService = new AllocateMappedFileService(this);
         this.commitLog = new CommitLog(this);
         this.consumeQueueTable = new ConcurrentHashMap<>(32);
 
+        /**
+         * 逻辑队列刷盘服务，每隔1秒钟就将ConsumeQueue逻辑队列、TransactionStateService.TranRedoLog变量的数据持久化到磁盘物理文件中
+         */
         this.flushConsumeQueueService = new FlushConsumeQueueService();
+        /**
+         * 清理物理文件服务，定期清理72小时之前的物理文件。
+         */
         this.cleanCommitLogService = new CleanCommitLogService();
+        /**
+         * 清理逻辑文件服务，定期清理在逻辑队列中的物理偏移量小于commitlog中的最小物理偏移量的数据，
+         * 同时也清理Index中物理偏移量小于commitlog中的最小物理偏移量的数据。
+         */
         this.cleanConsumeQueueService = new CleanConsumeQueueService();
+        /**
+         * 存储层内部统计服务
+         */
         this.storeStatsService = new StoreStatsService();
+        /**
+         * 创建IndexService服务线程，该服务线程负责创建Index索引
+         */
         this.indexService = new IndexService(this);
+        /**
+         * 用于commitlog数据的主备同步
+         */
         this.haService = new HAService(this);
 
         this.reputMessageService = new ReputMessageService();
-
+        /**
+         * 用于监控延迟消息，并到期后执行
+         */
         this.scheduleMessageService = new ScheduleMessageService(this);
 
         this.transientStorePool = new TransientStorePool(messageStoreConfig);

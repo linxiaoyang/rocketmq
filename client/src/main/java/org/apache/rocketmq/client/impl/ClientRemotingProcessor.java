@@ -52,6 +52,10 @@ public class ClientRemotingProcessor implements NettyRequestProcessor {
     private final Logger log = ClientLogger.getLog();
     private final MQClientInstance mqClientFactory;
 
+    /**
+     * 这边的命名很有歧义：明明是个instance,非得叫factory
+     * @param mqClientFactory
+     */
     public ClientRemotingProcessor(final MQClientInstance mqClientFactory) {
         this.mqClientFactory = mqClientFactory;
     }

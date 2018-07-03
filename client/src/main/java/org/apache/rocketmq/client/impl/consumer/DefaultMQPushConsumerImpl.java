@@ -116,7 +116,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     private boolean consumeOrderly = false;
     private MessageListener messageListenerInner;
     /**
-     * 维护当前consumer的消费记录（offset）；有两种实现，Local和Rmote，
+     * 维护当前consumer的消费记录（offset）；有两种实现，Local和Remote，
      * Local存储在本地磁盘上，适用于BROADCASTING广播消费模式；
      * 而Remote则将消费进度存储在Broker上，适用于CLUSTERING集群消费模式；
      */

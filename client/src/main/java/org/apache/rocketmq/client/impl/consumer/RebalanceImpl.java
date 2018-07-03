@@ -119,6 +119,13 @@ public abstract class RebalanceImpl {
         }
     }
 
+    /**
+     * 从RebalanceImpl.processQueueTable:ConcurrentHashMap <MessageQueue,ProcessQueue>变量中
+     * 根据所有的Key值构建一个结构是HashMap<String/* brokerName *, Set<MessageQueue>>的Map集合；
+     * 按每个brokerName来构建MessageQueue集合；遍历该Map集合的每个brokerName；
+     *
+     * @return
+     */
     private HashMap<String/* brokerName */, Set<MessageQueue>> buildProcessQueueTableByBrokerName() {
         HashMap<String, Set<MessageQueue>> result = new HashMap<String, Set<MessageQueue>>();
         for (MessageQueue mq : this.processQueueTable.keySet()) {
@@ -179,17 +186,33 @@ public abstract class RebalanceImpl {
             if (mqs.isEmpty())
                 continue;
 
+            /**
+             * 以brokerName为参数从MQClientInstance.brokerAddrTable中获取主用Broker的地址；
+             * 若主用Broker地址为空则继续遍历下一个brokerName，直到遍历完为止；否则继续下面的操作；
+             */
             FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(brokerName, MixAll.MASTER_ID, true);
             if (findBrokerResult != null) {
+                /**
+                 * 初始化LockBatchRequestBody对象；其中，MqSet等于该brokerName对应的MessageQueue集合、ClientId等于该Consumer的ClientID；
+                 */
                 LockBatchRequestBody requestBody = new LockBatchRequestBody();
                 requestBody.setConsumerGroup(this.consumerGroup);
                 requestBody.setClientId(this.mQClientFactory.getClientId());
                 requestBody.setMqSet(mqs);
 
                 try {
+                    /**
+                     * 向该brokerName下面的主用Broker发送LOCK_BATCH_MQ请求码的请求消息，请求Broker将发送的MessageQueue集合加锁
+                     */
                     Set<MessageQueue> lockOKMQSet =
                             this.mQClientFactory.getMQClientAPIImpl().lockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000);
 
+
+                    /**
+                     * 根据Broker返回的已经锁住的MessageQueue集合，将RebalanceImpl.processQueueTable:ConcurrentHashMap<MessageQueue,ProcessQueue>变量中
+                     * 已经锁住的MessageQueue对象对应的ProcessQueue对象的locked置为true、更新lastLockTimestamp值；将未锁住的MessageQueue对应的ProcessQueue对象
+                     * 的locked置为false；
+                     */
                     for (MessageQueue mq : lockOKMQSet) {
                         ProcessQueue processQueue = this.processQueueTable.get(mq);
                         if (processQueue != null) {
@@ -518,6 +541,7 @@ public abstract class RebalanceImpl {
 
     /**
      * RebalanceImpl.computePullFromWhere(MessageQueue mq)方法获取该MessageQueue对象的下一个进度消费值offset。
+     *
      * @param mq
      * @return
      */

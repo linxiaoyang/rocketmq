@@ -74,7 +74,10 @@ public class PullAPIWrapper {
      * <p>
      * pullResult, SubscriptionData subscriptionData)方法处理拉取消息的返回对象PullResult，大致逻辑如下：
      * <p>
-     * 1.1）调用PullAPIWrapper.updatePullFromWhichNode(MessageQueue mq, long brokerId)方法用Broker返回的PullResultExt.suggestWhichBrokerId变量值更新PullAPIWrapper.pullFromWhichNodeTable:ConcurrentHashMap <MessageQueue,AtomicLong/* brokerId >变量中当前拉取消息PullRequest.messageQueue对象对应的BrokerId。若以messageQueue为key值从pullFromWhichNodeTable中获取的BrokerId为空则将PullResultExt.suggestWhichBrokerId存入该列表中，否则更新该MessageQueue对应的value值为suggestWhichBrokerId；
+     * 1.1）调用PullAPIWrapper.updatePullFromWhichNode(MessageQueue mq, long brokerId)方法用Broker返回的PullResultExt.suggestWhichBrokerId
+     * 变量值更新PullAPIWrapper.pullFromWhichNodeTable:ConcurrentHashMap <MessageQueue,AtomicLong/* brokerId >变量中当前拉取消息
+     * PullRequest.messageQueue对象对应的BrokerId。若以messageQueue为key值从pullFromWhichNodeTable中获取的BrokerId为空则将
+     * PullResultExt.suggestWhichBrokerId存入该列表中，否则更新该MessageQueue对应的value值为suggestWhichBrokerId；
      * <p>
      * 1.2）若pullResult.status=FOUND，则继续下面的处理逻辑，否则设置PullResultExt.messageBinary=null并返回该PullResult对象；
      * <p>

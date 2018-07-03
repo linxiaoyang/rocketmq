@@ -1005,6 +1005,16 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 将DefaultMQPushConsumerImpl对象在MQClientInstance中注册，以consumerGroup为key值、DefaultMQPushConsumerImpl
+     * 对象为values值存入
+     * MQClientInstance.consumerTable:ConcurrentHashMap<String/* group *, MQConsumerInner>变量中，
+     * 若在该变量中已存在该consumerGroup的记录则向应用层抛出MQClientException异常；说明在一个客户端的一个
+     * 进程下面启动多个Consumer时consumerGroup名字不能一样，否则无法启动；
+     * @param group
+     * @param consumer
+     * @return
+     */
     public boolean registerConsumer(final String group, final MQConsumerInner consumer) {
         if (null == group || null == consumer) {
             return false;

@@ -708,10 +708,26 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
                 this.copySubscription();
 
+                /**
+                 * 若消息模式为集群模式且实例名（instanceName）等于"DEFAULT"，
+                 * 则取该进程的PID作为该Consumer的实例名（instanceName）；
+                 * 调用java的ManagementFactory.getRuntimeMXBean()方法获取进程的PID；
+                 */
                 if (this.defaultMQPushConsumer.getMessageModel() == MessageModel.CLUSTERING) {
                     this.defaultMQPushConsumer.changeInstanceNameToPID();
                 }
 
+                /**
+                 * 与Producer端一样，创建MQClientInstance对象。
+                 * 先检查单例对象MQClientManager的factoryTable:
+                 * ConcurrentHashMap<String/* clientId *, MQClientInstance>
+                 * 变量中是否存在该ClientID的对象，若存在则直接返回该MQClientInstance
+                 * 对象，若不存在，则创建MQClientInstance对象，并以该ClientID为key
+                 * 值将新创建的MQClientInstance对象存入并返回，将返回的MQClientInstance
+                 * 对象赋值给DefaultMQProducerImpl.mQClientFactory变量；
+                 * 说明一个IP客户端下面的应用，只有在启动多个进程的情况下才会
+                 * 创建多个MQClientInstance对象
+                 */
                 this.mQClientFactory = MQClientManager.getInstance().getAndCreateMQClientInstance(this.defaultMQPushConsumer, this.rpcHook);
 
                 this.rebalanceImpl.setConsumerGroup(this.defaultMQPushConsumer.getConsumerGroup());
@@ -719,11 +735,26 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 this.rebalanceImpl.setAllocateMessageQueueStrategy(this.defaultMQPushConsumer.getAllocateMessageQueueStrategy());
                 this.rebalanceImpl.setmQClientFactory(this.mQClientFactory);
 
+                /**
+                 * 初始化PullAPIWrapper 对象，然后调用PullAPIWrapper.registerFilterMessageHook(ArrayList<FilterMessageHook> filterMessageHookList)
+                 * 方法注册FilterMessageHook列表，用于消息的过滤；该列表可以通过在应用层调用
+                 * DefaultMQPushConsumerImpl.registerFilterMessageHook(FilterMessageHook hook)
+                 * 方法设置；
+                 */
                 this.pullAPIWrapper = new PullAPIWrapper(
                         mQClientFactory,
                         this.defaultMQPushConsumer.getConsumerGroup(), isUnitMode());
                 this.pullAPIWrapper.registerFilterMessageHook(filterMessageHookList);
 
+
+                /**
+                 * 若在应用层通过DefaultMQPushConsumer.setOffsetStore(OffsetStore offsetStore)
+                 * 方法设置了DefaultMQPushConsumer.offsetStore变量，则将offsetStore变量赋值给
+                 * DefaultMQPushConsumerImpl.offsetStore变量；若没有设置则根据消息模式来设置：
+                 * 若消息模式是广播（BROADCASTING），则初始化LocalFileOffsetStore对象并赋值给
+                 * DefaultMQPushConsumerImpl.offsetStore变量；若消息模式是集群（CLUSTERING），
+                 * 则初始化RemoteBrokerOffsetStore对象并赋值给DefaultMQPushConsumerImpl.offsetStore变量；
+                 */
                 if (this.defaultMQPushConsumer.getOffsetStore() != null) {
                     this.offsetStore = this.defaultMQPushConsumer.getOffsetStore();
                 } else {
@@ -739,8 +770,21 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                     }
                     this.defaultMQPushConsumer.setOffsetStore(this.offsetStore);
                 }
+                /**
+                 * 调用DefaultMQPushConsumerImpl.offsetStore:OffsetStore的load方法加载文件；
+                 * 只有LocalFileOffsetStore类实现了load方法，
+                 * 该方法将本地的offsets.json文件内容加载到LocalFileOffsetStore.offsetTable变量中；
+                 */
                 this.offsetStore.load();
 
+                /**
+                 * 若DefaultMQPushConsumerImpl.messageListenerInner的值实现了MessageListenerOrderly接口则认为是顺序消费，
+                 * 即设置DefaultMQPushConsumerImpl.consumeOrderly =true、consumeMessageService变量初始化为
+                 * ConsumeMessageOrderlyService对象；否则若DefaultMQPushConsumerImpl.messageListenerInner
+                 * 的值实现了MessageListenerConcurrently接口则初始化
+                 * DefaultMQPushConsumerImpl.consumeOrderly =false、consumeMessageService变量初始化为
+                 * ConsumeMessageConcurrentlyService对象；
+                 */
                 if (this.getMessageListenerInner() instanceof MessageListenerOrderly) {
                     this.consumeOrderly = true;
                     this.consumeMessageService =
@@ -753,6 +797,13 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
                 this.consumeMessageService.start();
 
+                /**
+                 * 将DefaultMQPushConsumerImpl对象在MQClientInstance中注册，以consumerGroup为key值、DefaultMQPushConsumerImpl
+                 * 对象为values值存入
+                 * MQClientInstance.consumerTable:ConcurrentHashMap<String/* group *, MQConsumerInner>变量中，
+                 * 若在该变量中已存在该consumerGroup的记录则向应用层抛出MQClientException异常；说明在一个客户端的一个
+                 * 进程下面启动多个Consumer时consumerGroup名字不能一样，否则无法启动；
+                 */
                 boolean registerOK = mQClientFactory.registerConsumer(this.defaultMQPushConsumer.getConsumerGroup(), this);
                 if (!registerOK) {
                     this.serviceState = ServiceState.CREATE_JUST;
@@ -950,15 +1001,34 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         try {
             Map<String, String> sub = this.defaultMQPushConsumer.getSubscription();
             if (sub != null) {
+                /**
+                 * 遍历DefaultMQPushConsumer.subscription变量，对于每条记录，
+                 * 调用FilterAPI.buildSubscriptionData(String consumerGroup, String topic,String subExpression)
+                 * 方法构建SubscriptionData对象并以topic和构建的SubscriptionData对象为K-V值存入
+                 * DefaultMQPushConsumer.RebalancePushImpl.subscriptionInner:
+                 * ConcurrentHashMap<String /* topic *, SubscriptionData>变量中；
+                 */
                 for (final Map.Entry<String, String> entry : sub.entrySet()) {
                     final String topic = entry.getKey();
                     final String subString = entry.getValue();
+                    /**
+                     * 创建订阅的数据
+                     */
                     SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(this.defaultMQPushConsumer.getConsumerGroup(),
                             topic, subString);
+                    /**
+                     * 以topic和返回的SubscriptionData对象为K-V值存入SubscriptionInner中
+                     */
                     this.rebalanceImpl.getSubscriptionInner().put(topic, subscriptionData);
                 }
             }
 
+            /**
+             * 若DefaultMQPushConsumerImpl.messageListenerInner为null，
+             * 则将DefaultMQPushConsumer.messageListener变量赋值给它；
+             * 当应用层通过调用DefaultMQPushConsumer.setMessageListener(MessageListener messageListener)
+             * 方法来设置回调类时，就要在此给DefaultMQPushConsumerImpl.messageListenerInner赋值；
+             */
             if (null == this.messageListenerInner) {
                 this.messageListenerInner = this.defaultMQPushConsumer.getMessageListener();
             }
@@ -967,6 +1037,11 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 case BROADCASTING:
                     break;
                 case CLUSTERING:
+                    /**
+                     * 若消息模式为集群（DefaultMQPushConsumer.messageModel=CLUSTERING），
+                     * 则生成以 "%RETRY%"+consumerGroup名为topic、"*"为subExpression的SubscriptionData对象，
+                     * 并存入DefaultMQPushConsumer. RebalancePushImpl.subscriptionInner变量中；
+                     */
                     final String retryTopic = MixAll.getRetryTopic(this.defaultMQPushConsumer.getConsumerGroup());
                     SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(this.defaultMQPushConsumer.getConsumerGroup(),
                             retryTopic, SubscriptionData.SUB_ALL);

@@ -358,6 +358,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         response.setCode(-1);
         //这里面会将topic的数据持久化，然后注册到nameserver
+        //todo 重要
         super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
             return response;

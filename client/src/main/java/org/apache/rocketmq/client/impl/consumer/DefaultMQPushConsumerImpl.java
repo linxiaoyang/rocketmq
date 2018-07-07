@@ -355,6 +355,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                             if (pullResult.getMsgFoundList() == null || pullResult.getMsgFoundList().isEmpty()) {
                                 DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
                             } else {
+                                //有数据
                                 firstMsgOffset = pullResult.getMsgFoundList().get(0).getQueueOffset();
 
                                 DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullTPS(pullRequest.getConsumerGroup(),

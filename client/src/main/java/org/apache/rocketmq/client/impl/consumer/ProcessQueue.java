@@ -36,7 +36,7 @@ import org.slf4j.Logger;
 /**
  * Queue consumption snapshot
  *
- * 队列消费快照
+ * 队列消费快照，正在被消费的队列
  *
  * 针对此次消费的过程信息等的记录
  */

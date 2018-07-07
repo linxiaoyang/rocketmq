@@ -403,13 +403,22 @@ public abstract class RebalanceImpl {
      * <p>
      * 一个MessageQueue消息队列的消息分配一个消息处理队列ProcessQueue来进行消费处理，这两个队列的关系存储在RebalanceImpl.processQueueTable队列变量中。
      * <p>
-     * 在拉取消息之前会为该Consumer分配消费的消息队列集合mqSet，RebalanceImpl.updateProcessQueueTableInRebalance(String topic, Set<MessageQueue> mqSet)方法的目的是，第一，为该消息队列集合中的每个MessageQueue对象创建一个ProcessQueue对象并存入RebalanceImpl.processQueueTable队列变量中，并将processQueueTable队列中其他的MessageQueue记录删除掉；第二，对于PUSH模式要创建PullRequest对象并放入消息拉取线程（PullMessageService）的pullRequestQueue队列中，由该线程进行消息的拉取处理；大致逻辑如下：
+     * 在拉取消息之前会为该Consumer分配消费的消息队列集合mqSet，RebalanceImpl.updateProcessQueueTableInRebalance(String topic, Set<MessageQueue> mqSet)
+     * 方法的目的是，第一，为该消息队列集合中的每个MessageQueue对象创建一个ProcessQueue对象并存入RebalanceImpl.processQueueTable队列变量中，
+     * 并将processQueueTable队列中其他的MessageQueue记录删除掉；第二，对于PUSH模式要创建PullRequest对象并放入消息拉取线程（PullMessageService）
+     * 的pullRequestQueue队列中，由该线程进行消息的拉取处理；大致逻辑如下：
      * <p>
-     * 1、遍历RebalanceImpl.processQueueTable:ConcurrentHashMap <MessageQueue, ProcessQueue>集合，检查该集合中的每条记录，对于不在入参MessageQueue集合中记录或者记录中ProcessQueue对象的距离上次拉取时间已经超时，则从该列表中删除掉该记录：
+     * 1、遍历RebalanceImpl.processQueueTable:ConcurrentHashMap <MessageQueue, ProcessQueue>集合，检查该集合中的每条记录，
+     * 对于不在入参MessageQueue集合中记录或者记录中ProcessQueue对象的距离上次拉取时间已经超时，则从该列表中删除掉该记录：
      * <p>
      * 1.1）首先检查MessageQueue的topic值是否等于参数topic；若不相等，则继续遍历下一条记录；若相等，则继续下面的处理逻辑；
      * <p>
-     * 1.2) 检查满足第1步的MessageQueue对象是否在入参MessageQueue集合中：若不在此集合中，则将该记录对应的ProcessQueue对象的dropped变量置为true，并且调用 removeUnnecessaryMessageQueue 方法删除该消息队列的消费进度（详见4小节），若删除成功则再将该消息队列的记录从RebalanceImpl.processQueueTable列表中删除并置 changed=true ；若在此集合中，则检查ProcessQueue距离上次拉取时间（ProcessQueue. lastPullTimestamp）是否已经超时（默认120秒），若已经超时，并且消费类型为被动消费（即为PUSH模式，RebalancePushImpl），则将该记录对应的ProcessQueue对象的dropped变量置为true，并且调用 removeUnnecessaryMessageQueue 方法删除该消息队列的消费进度（详见4小节）, 若删除成功则再将遍历到的此条记录从RebalanceImpl.processQueueTable列表中删除并置 changed=true ；
+     * 1.2) 检查满足第1步的MessageQueue对象是否在入参MessageQueue集合中：若不在此集合中，
+     * 则将该记录对应的ProcessQueue对象的dropped变量置为true，并且调用 removeUnnecessaryMessageQueue 方法删除该消息队列的消费进度（详见4小节），
+     * 若删除成功则再将该消息队列的记录从RebalanceImpl.processQueueTable列表中删除并置 changed=true ；若在此集合中，则检查ProcessQueue距离上次
+     * 拉取时间（ProcessQueue. lastPullTimestamp）是否已经超时（默认120秒），若已经超时，并且消费类型为被动消费（即为PUSH模式，RebalancePushImpl），
+     * 则将该记录对应的ProcessQueue对象的dropped变量置为true，并且调用 removeUnnecessaryMessageQueue 方法删除该消息队列的消费进度（详见4小节）,
+     * 若删除成功则再将遍历到的此条记录从RebalanceImpl.processQueueTable列表中删除并置 changed=true ；
      * <p>
      * 2、遍历入参MessageQueue集合，检查该集合中的每个MessageQueue对象，保证每个MessageQueue对象在processQueueTable队列中都有ProcessQueue对象。对于不在RebalanceImpl.processQueueTable:ConcurrentHashMap <MessageQueue, ProcessQueue>列表中的MessageQueue对象，要构建PullRequest对象以及processQueueTable集合的K-V值，构建过程如下：
      * <p>

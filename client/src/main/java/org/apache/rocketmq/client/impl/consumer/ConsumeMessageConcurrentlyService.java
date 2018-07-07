@@ -427,7 +427,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                         MessageAccessor.setConsumeStartTimeStamp(msg, String.valueOf(System.currentTimeMillis()));
                     }
                 }
-                //调用监听器的声明周期方法consumeMessage，完成数据的回调
+                //TODO 重要！！！客户端消费消息。调用监听器的声明周期方法consumeMessage，完成数据的回调
                 status = listener.consumeMessage(Collections.unmodifiableList(msgs), context);
             } catch (Throwable e) {
                 log.warn("consumeMessage exception: {} Group: {} Msgs: {} MQ: {}",

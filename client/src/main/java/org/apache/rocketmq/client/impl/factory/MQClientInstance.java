@@ -171,6 +171,12 @@ public class MQClientInstance {
                 MQVersion.getVersionDesc(MQVersion.CURRENT_VERSION), RemotingCommand.getSerializeTypeConfigInThisServer());
     }
 
+    /**
+     * 将TopicRouteData包装成TopicPublishInfo
+     * @param topic
+     * @param route
+     * @return
+     */
     public static TopicPublishInfo topicRouteData2TopicPublishInfo(final String topic, final TopicRouteData route) {
         TopicPublishInfo info = new TopicPublishInfo();
         info.setTopicRouteData(route);
@@ -292,9 +298,10 @@ public class MQClientInstance {
                     // TODO 开始各种定时任务，待细细观察
                     this.startScheduledTask();
                     // Start pull service
-                    // TODO 开始拉取的服务，是一个定时任务
+                    // TODO 开始拉取的服务，是一个定时任务。从队列里面拉取数据消费，见下面一个步骤
                     this.pullMessageService.start();
                     // Start rebalance service
+                    //TODO 往消费队列里面塞数据
                     this.rebalanceService.start();
                     // Start push service
                     // TODO 开始推送服务，也就是发送消息，有点像product与consumer公用一个
